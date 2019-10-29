@@ -67,8 +67,7 @@ fabric.properties
 venv/
 .idea/
 .idea/httpRequests
-**/*.tsv
-**/*.pkl
+jiant/data/
 # Android studio 3.1+ serialized cache file
 .idea/caches/build_file_checksums.ser
 

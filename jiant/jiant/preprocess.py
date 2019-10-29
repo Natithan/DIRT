@@ -133,7 +133,7 @@ def _index_split(task, split, indexers, vocab, record_file, model_preprocessing_
         vocab: Vocabulary instance
         record_file: (string) file to write serialized Instances to
         model_preprocessing_interface: packed information from model that affects the task data, including
-            whether to concatenate sentence pair, and how to mark the sentence boundry
+            whether to concatenate sentence pair, and how to mark the sentence boundary
     """
     log_prefix = "\tTask %s (%s)" % (task.name, split)
     log.info("%s: Indexing from scratch.", log_prefix)

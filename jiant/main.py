@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('TkAgg')
 import logging as log
 
 log.basicConfig(

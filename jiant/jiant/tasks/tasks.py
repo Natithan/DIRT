@@ -14,7 +14,6 @@ import pandas as pd
 import requests
 import torch
 
-
 # Fields for instance processing
 from PIL import Image
 from allennlp.data import Instance, Token, vocabulary
@@ -25,6 +24,7 @@ from allennlp.data.fields import (
     MultiLabelField,
     SpanField,
     TextField,
+    ArrayField
 )
 from allennlp.data.token_indexers import SingleIdTokenIndexer
 from allennlp.training.metrics import Average, BooleanAccuracy, CategoricalAccuracy, F1Measure
@@ -56,7 +56,6 @@ get_metrics(): e.g. if task.val_metric = task_name + "_accuracy", then
 task.get_metrics() should return {"accuracy": accuracy_val, ... }
 """
 
-
 UNK_TOK_ALLENNLP = "@@UNKNOWN@@"
 UNK_TOK_ATOMIC = "UNKNOWN"  # an unk token that won't get split by tokenizers
 
@@ -68,7 +67,7 @@ def sentence_to_text_field(sent: Sequence[str], indexers: Any):
 
 
 def atomic_tokenize(
-    sent: str, atomic_tok: str, nonatomic_toks: List[str], max_seq_len: int, tokenizer_name: str
+        sent: str, atomic_tok: str, nonatomic_toks: List[str], max_seq_len: int, tokenizer_name: str
 ):
     """ Replace tokens that will be split by tokenizer with a
     placeholder token. Tokenize, and then substitute the placeholder
@@ -81,12 +80,12 @@ def atomic_tokenize(
 
 
 def process_single_pair_task_split(
-    split,
-    indexers,
-    model_preprocessing_interface,
-    is_pair=True,
-    classification=True,
-    is_symmetrical_pair=False,
+        split,
+        indexers,
+        model_preprocessing_interface,
+        is_pair=True,
+        classification=True,
+        is_symmetrical_pair=False,
 ):
     """
     Convert a dataset of sentences into padded sequences of indices. Shared
@@ -105,6 +104,7 @@ def process_single_pair_task_split(
     Returns:
         - instances (Iterable[Instance]): an iterable of AllenNLP Instances with fields
     """
+
     # check here if using bert to avoid passing model info to tasks
 
     def _make_instance(input1, input2, labels, idx):
@@ -115,8 +115,8 @@ def process_single_pair_task_split(
             d["inputs"] = sentence_to_text_field(inp, indexers)
             d["sent2_str"] = MetadataField(" ".join(input2))
             if (
-                model_preprocessing_interface.model_flags["uses_mirrored_pair"]
-                and is_symmetrical_pair
+                    model_preprocessing_interface.model_flags["uses_mirrored_pair"]
+                    and is_symmetrical_pair
             ):
                 inp_m = model_preprocessing_interface.boundary_token_fn(input1, input2)
                 d["inputs_m"] = sentence_to_text_field(inp_m, indexers)
@@ -277,7 +277,7 @@ class Task(object):
         return len(split_text[0])
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
         raise NotImplementedError
@@ -324,7 +324,7 @@ class SingleClassificationTask(ClassificationTask):
         return {"accuracy": acc}
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
         return process_single_pair_task_split(
@@ -350,7 +350,7 @@ class PairClassificationTask(ClassificationTask):
         return {"accuracy": acc}
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
         return process_single_pair_task_split(
@@ -375,7 +375,7 @@ class PairRegressionTask(RegressionTask):
         return {"mse": mse}
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
         return process_single_pair_task_split(
@@ -403,7 +403,7 @@ class PairOrdinalRegressionTask(RegressionTask):
         return {"1-mse": 1 - mse, "mse": mse, "spearmanr": spearmanr}
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
         return process_single_pair_task_split(
@@ -855,10 +855,10 @@ class QQPTask(PairClassificationTask):
             skip_rows=1,
         )
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading QQP data.")
 
@@ -875,7 +875,7 @@ class QQPTask(PairClassificationTask):
         }
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
         return process_single_pair_task_split(
@@ -932,10 +932,10 @@ class MRPCTask(PairClassificationTask):
             skip_rows=1,
         )
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading MRPC data.")
 
@@ -952,7 +952,7 @@ class MRPCTask(PairClassificationTask):
         }
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
         return process_single_pair_task_split(
@@ -1015,10 +1015,10 @@ class STSBTask(PairRegressionTask):
             skip_rows=1,
         )
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading STS Benchmark data.")
 
@@ -1028,7 +1028,7 @@ class STSBTask(PairRegressionTask):
         return {"corr": (pearsonr + spearmanr) / 2, "pearsonr": pearsonr, "spearmanr": spearmanr}
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
         return process_single_pair_task_split(
@@ -1089,10 +1089,10 @@ class SNLITask(PairClassificationTask):
             skip_rows=1,
         )
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading SNLI data.")
 
@@ -1199,10 +1199,10 @@ class MultiNLITask(PairClassificationTask):
         self.val_data_text = val_data
         self.test_data_text = te_data
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading MNLI data.")
 
@@ -1389,10 +1389,10 @@ class GLUEDiagnosticTask(PairClassificationTask):
         self.val_data_text = self.train_data_text
         self.test_data_text = self.train_data_text
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading diagnostic data.")
 
@@ -1446,7 +1446,7 @@ class GLUEDiagnosticTask(PairClassificationTask):
         self._scorer_all_acc(logits, labels)
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
 
@@ -1523,28 +1523,37 @@ class GLUEDiagnosticTask(PairClassificationTask):
         collected_metrics["accuracy"] = self._scorer_all_acc.get_metric(reset)
         return collected_metrics
 
+
 @register_task("cc", rel_path='CC')
 class ConceptualCaptionsLMTask(Task):
     def __init__(self, path, max_seq_len, name, **kw):
         super().__init__(name, **kw)
         self.data_path = path
         self.max_seq_len = max_seq_len
+
     def load_data(self):
-        '''Process the dataset located at self.data_path'''
+        """Process the dataset located at self.data_path"""
         pkl_path = Path(self.data_path, f'data.pkl')
-        if not os.path.exists(pkl_path): #TODO
+        if not os.path.exists(pkl_path):
             pkl = DotMap()
-            for split in ['train','val','test']:
+            for split in ['train', 'val', 'test']:
                 data = pd.read_csv(Path(self.data_path, f'{split}.tsv'), '\t', names=['captions', 'urls'])
                 mixed_data = self.mix_data(data)
                 images = mixed_data.urls.apply(self.array_from_url)
                 pkl[split] = DotMap({'captions': mixed_data.captions, 'images': images, 'labels': mixed_data.labels})
-            pickle.dump(pkl,open(pkl_path,'wb'))
-        self.data = pickle.load(open(pkl_path,'rb'))
+            pickle.dump(pkl, open(pkl_path, 'wb'))
+        self.data = pickle.load(open(pkl_path, 'rb'))
         self.train_data_text = self.data.train.captions
         self.val_data_text = self.data.val.captions
         self.test_data_text = self.data.test.captions
         self.sentences = self.train_data_text + self.val_data_text
+
+    def get_split_text(self, split: str):
+        """ Get split data , typically as list of columns. #TODO in own implementation, if not only text, rename in preprocessing
+
+        Split should be one of 'train', 'val', or 'test'.
+        """
+        return self.data[f'{split}']
 
     def mix_data(self, data):
         """
@@ -1552,36 +1561,16 @@ class ConceptualCaptionsLMTask(Task):
         and half are labeled false and get a randomly assigned incorrect image
         """
         true_data = data.sample(math.ceil(len(data) / 2))
-        other_data = data.drop(true_data.index).sample(frac=1) # sample(frac=1) is same as permuting rows
+        other_data = data.drop(true_data.index).sample(frac=1)  # sample(frac=1) is same as permuting rows
         false_data = other_data.copy()
         false_data.urls = np.roll(other_data.urls, 1)
         true_data['labels'] = 1
         false_data['labels'] = 0
-        return true_data.append(false_data).sample(frac=1).reset_index(inplace=True)
+        return true_data.append(false_data).sample(frac=1).reset_index(drop=True)
 
-    # def _make_instance(input1, input2, label):
-    # 	''' Make Allennlp instances from records '''
-    #     d = {}
-    #     d["sent1_str"] = MetadataField(" ".join(input1))
-    #     if model_preprocessing_interface.model_flags["uses_pair_embedding"]:
-    #         inp = model_preprocessing_interface.boundary_token_fn(input1, input2)
-    #         d["inputs"] = sentence_to_text_field(inp, indexers)
-    #         d["sent2_str"] = MetadataField(" ".join(input2))
-    #     else:
-    #         d["input1"] = sentence_to_text_field(
-    #             model_preprocessing_interface.boundary_token_fn(input1), indexers
-    #         )
-    #         if input2:
-    #             d["input2"] = sentence_to_text_field(
-    #                 model_preprocessing_interface.boundary_token_fn(input2), indexers
-    #             )
-    #             d["sent2_str"] = MetadataField(" ".join(input2))
-    #     d["labels"] = LabelField(labels, label_namespace="labels", skip_indexing=True)
-    #     d["idx"] = LabelField(idx, label_namespace="idxs_tags", skip_indexing=True)
-    #     d["pair_id"] = LabelField(pair_id, label_namespace="pair_id_tags", skip_indexing=True)
-    #     return Instance(d)
     def update_metrics(self, labels, logits, tagmask=None):
         '''Get metrics specific to the task'''
+
     def get_metrics(self, reset=False):
         '''Get metrics specific to the task'''
 
@@ -1591,23 +1580,33 @@ class ConceptualCaptionsLMTask(Task):
         Subclass can override this if data is not stored in column format.
         Overriden.
         """
-        return len(split_text)
+        return len(split_text.captions)
 
-    def array_from_url(self,url):
+    def array_from_url(self, url):
         """
         Returns a numpy array for the image at the url.
         If it cannot be found, returns None
         """
         try:
-            return np.array(Image.open(BytesIO(requests.get(url).content))) #TODO Nathan probably compress images
+            return np.array(Image.open(BytesIO(requests.get(url).content)))  # TODO Nathan probably compress images
         except OSError:
             return None
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
-        raise NotImplementedError
+
+        def _make_instance(caption, image, label):
+            d = {}
+            d['caption'] = TextField(list(map(Token, caption.split(" "))), token_indexers=indexers)
+            d['labels'] = LabelField(label, label_namespace='labels', skip_indexing=True)
+            d['image'] = ArrayField(image)
+            return Instance(d)
+
+        instances = map(_make_instance, *(split.captions, split.images, split.labels))
+        return instances  # lazy iterator
+
 
 # SuperGLUE diagnostic (2-class NLI), expects JSONL
 @register_task("broadcoverage-diagnostic", rel_path="RTE/diagnostics")
@@ -1753,10 +1752,10 @@ class WinogenderTask(GLUEDiagnosticTask):
             os.path.join(self.path, "AX-g.jsonl"), self._tokenizer_name, self.max_seq_len, targ_map
         )
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading winogender (from SuperGLUE formatted data).")
 
@@ -1855,10 +1854,10 @@ class RTETask(PairClassificationTask):
             skip_rows=1,
         )
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading RTE (from GLUE formatted data).")
 
@@ -1896,10 +1895,10 @@ class RTESuperGLUETask(RTETask):
         self.test_data_text = _load_jsonl(os.path.join(self.path, "test.jsonl"))
 
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading RTE (from SuperGLUE formatted data).")
 
@@ -1953,10 +1952,10 @@ class QNLITask(PairClassificationTask):
             skip_rows=1,
         )
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading QNLI.")
 
@@ -2005,10 +2004,10 @@ class WNLITask(PairClassificationTask):
             skip_rows=1,
         )
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading Winograd.")
 
@@ -2055,10 +2054,10 @@ class JOCITask(PairOrdinalRegressionTask):
             label_idx=2,
         )
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading JOCI data.")
 
@@ -2121,7 +2120,7 @@ class Wiki103Classification(PairClassificationTask):
                 yield sent
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process a language modeling split.  Split is a single list of sentences here.  """
 
@@ -2220,7 +2219,7 @@ class DisSentTask(PairClassificationTask):
         self.example_counts = example_counts
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
 
@@ -2295,10 +2294,10 @@ class RecastNLITask(PairClassificationTask):
             label_idx=3,
         )
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading recast probing data.")
 
@@ -2351,7 +2350,7 @@ class CCGTaggingTask(TaggingTask):
         self.test_data_text = None
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process a tagging task """
         inputs = [TextField(list(map(Token, sent)), token_indexers=indexers) for sent in split[0]]
@@ -2452,14 +2451,14 @@ class SpanClassificationTask(Task):
         return True
 
     def __init__(
-        self,
-        path: str,
-        max_seq_len: int,
-        name: str,
-        label_file: str = None,
-        files_by_split: Dict[str, str] = None,
-        num_spans: int = 2,
-        **kw,
+            self,
+            path: str,
+            max_seq_len: int,
+            name: str,
+            label_file: str = None,
+            files_by_split: Dict[str, str] = None,
+            num_spans: int = 2,
+            **kw,
     ):
         """
         Construct a span task.
@@ -2559,7 +2558,7 @@ class SpanClassificationTask(Task):
         return Instance(example)
 
     def process_split(
-        self, records, indexers, model_preprocessing_interface
+            self, records, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
 
@@ -2640,10 +2639,10 @@ class CommitmentTask(PairClassificationTask):
         self.val_data_text = _load_data(os.path.join(self.path, "val.jsonl"))
         self.test_data_text = _load_data(os.path.join(self.path, "test.jsonl"))
         self.sentences = (
-            self.train_data_text[0]
-            + self.val_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.val_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[1]
         )
 
         log.info("\tFinished loading CommitmentBank data.")
@@ -2707,8 +2706,8 @@ class WiCTask(PairClassificationTask):
                     row = json.loads(row)
                     sent1 = row["sentence1"]
                     sent2 = row["sentence2"]
-                    word1 = sent1[row["start1"] : row["end1"]]
-                    word2 = sent2[row["start2"] : row["end2"]]
+                    word1 = sent1[row["start1"]: row["end1"]]
+                    word2 = sent2[row["start2"]: row["end2"]]
                     sent1, start1, end1 = _process_preserving_word(sent1, word1)
                     sent2, start2, end2 = _process_preserving_word(sent2, word2)
                     sents1.append(sent1)
@@ -2719,7 +2718,7 @@ class WiCTask(PairClassificationTask):
                     trgs.append(trg)
                     idxs.append(row["idx"])
                     assert (
-                        "version" in row and row["version"] == 1.1
+                            "version" in row and row["version"] == 1.1
                     ), "WiC version is not v1.1; examples indices are likely incorrect and data "
                     "is likely pre-tokenized. Please re-download the data from "
                     "super.gluebenchmark.com."
@@ -2729,10 +2728,10 @@ class WiCTask(PairClassificationTask):
         self.val_data_text = _load_split(os.path.join(self.path, "val.jsonl"))
         self.test_data_text = _load_split(os.path.join(self.path, "test.jsonl"))
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
         )
         log.info("\tFinished loading WiC data.")
 
@@ -2742,6 +2741,7 @@ class WiCTask(PairClassificationTask):
         across several classes.
 
         """
+
         # check here if using bert to avoid passing model info to tasks
 
         def _make_instance(input1, input2, idxs1, idxs2, labels, idx):
@@ -2849,15 +2849,15 @@ class SocialIQATask(MultipleChoiceTask):
         self.val_data_text = _load_split(os.path.join(self.path, "socialIQa_v1.4_dev.jsonl"))
         self.test_data_text = _load_split(os.path.join(self.path, "socialIQa_v1.4_tst.jsonl"))
         self.sentences = (
-            self.train_data_text[0]
-            + self.val_data_text[0]
-            + [choice for choices in self.train_data_text[1] for choice in choices]
-            + [choice for choices in self.val_data_text[1] for choice in choices]
+                self.train_data_text[0]
+                + self.val_data_text[0]
+                + [choice for choices in self.train_data_text[1] for choice in choices]
+                + [choice for choices in self.val_data_text[1] for choice in choices]
         )
         log.info("\tFinished loading SocialIQA data.")
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AlleNNLP Instances. """
 
@@ -2953,15 +2953,15 @@ class COPATask(MultipleChoiceTask):
         self.val_data_text = _load_split(os.path.join(self.path, "val.jsonl"))
         self.test_data_text = _load_split(os.path.join(self.path, "test.jsonl"))
         self.sentences = (
-            self.train_data_text[0]
-            + self.val_data_text[0]
-            + [choice for choices in self.train_data_text[1] for choice in choices]
-            + [choice for choices in self.val_data_text[1] for choice in choices]
+                self.train_data_text[0]
+                + self.val_data_text[0]
+                + [choice for choices in self.train_data_text[1] for choice in choices]
+                + [choice for choices in self.val_data_text[1] for choice in choices]
         )
         log.info("\tFinished loading COPA (as QA) data.")
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AlleNNLP Instances. """
 
@@ -3039,15 +3039,15 @@ class SWAGTask(MultipleChoiceTask):
         self.val_data_text = _load_split(os.path.join(self.path, "val.csv"))
         self.test_data_text = _load_split(os.path.join(self.path, "test.csv"))
         self.sentences = (
-            self.train_data_text[0]
-            + self.val_data_text[0]
-            + [choice for choices in self.train_data_text[1] for choice in choices]
-            + [choice for choices in self.val_data_text[1] for choice in choices]
+                self.train_data_text[0]
+                + self.val_data_text[0]
+                + [choice for choices in self.train_data_text[1] for choice in choices]
+                + [choice for choices in self.val_data_text[1] for choice in choices]
         )
         log.info("\tFinished loading SWAG data.")
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AlleNNLP Instances. """
 
@@ -3169,7 +3169,7 @@ class BooleanQuestionTask(PairClassificationTask):
         log.info("\tFinished loading BoolQ data.")
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AlleNNLP Instances. """
 
@@ -3277,19 +3277,19 @@ class AlphaNLITask(MultipleChoiceTask):
         log.warning("aNLI has no public test set, so we reuse the dev set as a stand-in")
         self.test_data_text = self.val_data_text
         self.sentences = (
-            self.train_data_text[0]
-            + self.train_data_text[1]
-            + self.train_data_text[2]
-            + self.train_data_text[3]
-            + self.val_data_text[0]
-            + self.val_data_text[1]
-            + self.val_data_text[2]
-            + self.val_data_text[3]
+                self.train_data_text[0]
+                + self.train_data_text[1]
+                + self.train_data_text[2]
+                + self.train_data_text[3]
+                + self.val_data_text[0]
+                + self.val_data_text[1]
+                + self.val_data_text[2]
+                + self.val_data_text[3]
         )
         log.info("\tFinished loading aNLI data.")
 
     def process_split(
-        self, split, indexers, model_preprocessing_interface
+            self, split, indexers, model_preprocessing_interface
     ) -> Iterable[Type[Instance]]:
         """ Process split text into a list of AllenNLP Instances. """
 

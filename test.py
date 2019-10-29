@@ -1,5 +1,5 @@
 import matplotlib
-matplotlib.use('TkAgg')
-matplotlib.get_backend()
 import matplotlib.pyplot as plt
-matplotlib.get_backend()
+matplotlib.use('TkAgg')
+plt.plot(range(10))
+plt.show()

@@ -65,7 +65,7 @@ from jiant.tasks.tasks import (
     WiCTask,
     MRPCTask,
     QQPTask,
-)
+    ConceptualCaptionsLMTask)
 from jiant.utils import config
 from jiant.utils.utils import (
     assert_for_log,
@@ -82,8 +82,8 @@ from jiant.utils.utils import (
 ELMO_OPT_NAME = "elmo_2x4096_512_2048cnn_2xhighway_options.json"
 ELMO_WEIGHTS_NAME = "elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5"
 ELMO_SRC_DIR = (
-    os.getenv("ELMO_SRC_DIR")
-    or "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/"
+        os.getenv("ELMO_SRC_DIR")
+        or "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/"
 )
 ELMO_OPT_PATH = os.path.join(ELMO_SRC_DIR, ELMO_OPT_NAME)
 ELMO_WEIGHTS_PATH = os.path.join(ELMO_SRC_DIR, ELMO_WEIGHTS_NAME)
@@ -162,9 +162,9 @@ def build_sent_encoder(args, vocab, d_emb, tasks, embedder, cove_layer):
         assert_for_log(args.sent_enc in ["rnn", "bilm"], "Only RNNLM supported!")
         assert_for_log(
             not (
-                args.input_module == "elmo"
-                or args.input_module.startswith("bert")
-                or args.input_module.startswith("xlnet")
+                    args.input_module == "elmo"
+                    or args.input_module.startswith("bert")
+                    or args.input_module.startswith("xlnet")
             ),
             f"Using input_module = {args.input_module} for language modeling is probably not a "
             "good idea, since it allows the language model to use information from the right-hand "
@@ -460,7 +460,7 @@ def build_embeddings(args, vocab, tasks, pretrained_embs=None):
             log.info("\tUsing full ELMo! (separate scalars/task)")
             if args.elmo_weight_file_path != "none":
                 assert os.path.exists(args.elmo_weight_file_path), (
-                    'ELMo weight file path "' + args.elmo_weight_file_path + '" does not exist.'
+                        'ELMo weight file path "' + args.elmo_weight_file_path + '" does not exist.'
                 )
                 weight_file = args.elmo_weight_file_path
             else:
@@ -522,13 +522,17 @@ def build_task_specific_modules(task, model, d_sent, d_emb, vocab, embedder, arg
         These include decoders, linear layers for linear models.
     """
     task_params = model._get_task_params(task.name)
-    if isinstance(task, SingleClassificationTask):
+    if isinstance(task,
+                  SingleClassificationTask):
         module = build_single_sentence_module(
             task=task,
             d_inp=d_sent,
             project_before_pooling=model.project_before_pooling,
             params=task_params,
         )
+        setattr(model, "%s_mdl" % task.name, module)
+    elif isinstance(task, ConceptualCaptionsLMTask):
+        module = build_pair_multimodal_module(task, d_sent, model=model, params=task_params)
         setattr(model, "%s_mdl" % task.name, module)
     elif isinstance(task, (PairClassificationTask, PairRegressionTask, PairOrdinalRegressionTask)):
         module = build_pair_sentence_module(task, d_sent, model=model, params=task_params)
@@ -670,6 +674,66 @@ def build_single_sentence_module(task, d_inp: int, project_before_pooling: bool,
     d_out = params["d_proj"] if project_before_pooling else d_inp
     classifier = Classifier.from_params(d_out, task.n_classes, params)
     module = SingleClassifier(pooler, classifier)
+    return module
+
+
+def build_pair_multimodal_module(task, d_inp, model, params): # Nathan-made
+
+    def build_pair_attn(d_in, d_hid_attn):
+        """ Build the pair model """
+        d_inp_model = 2 * d_in
+        modeling_layer = s2s_e.by_name("lstm").from_params(
+            Params(
+                {
+                    "input_size": d_inp_model,
+                    "hidden_size": d_hid_attn,
+                    "num_layers": 1,
+                    "bidirectional": True,
+                }
+            )
+        )
+        pair_attn = AttnPairEncoder(model.vocab, modeling_layer, dropout=params["dropout"])
+        return pair_attn
+
+    # Build the "pooler", which pools a variable length sequence
+    #   possibly with a projection layer beforehand
+    if params["attn"] and model.project_before_pooling:
+        pooler = Pooler(project=False, d_inp=params["d_hid_attn"], d_proj=params["d_hid_attn"])
+        d_out = params["d_hid_attn"] * 2
+    else:
+        pooler = Pooler(
+            project=model.project_before_pooling,
+            d_inp=d_inp,
+            d_proj=params["d_proj"],
+            pool_type=params["pool_type"],
+        )
+        d_out = params["d_proj"] if model.project_before_pooling else d_inp
+
+    # Build an attention module if necessary
+    if params["shared_pair_attn"] and params["attn"]:  # shared attn
+        if not hasattr(model, "pair_attn"):
+            pair_attn = build_pair_attn(d_inp, params["d_hid_attn"])
+            model.pair_attn = pair_attn
+        else:
+            pair_attn = model.pair_attn
+    elif params["attn"]:  # non-shared attn
+        pair_attn = build_pair_attn(d_inp, params["d_hid_attn"])
+    else:  # no attn
+        pair_attn = None
+
+    # Build the classifier
+    n_classes = task.n_classes if hasattr(task, "n_classes") else 1
+    if model.uses_pair_embedding:
+        # BERT/XLNet handle pair tasks by concatenating the inputs and classifying the joined
+        # sequence, so we use a single sentence classifier
+        if isinstance(task, WiCTask):
+            d_out *= 3  # also pass the two contextual word representations
+        classifier = Classifier.from_params(d_out, n_classes, params)
+        module = SingleClassifier(pooler, classifier) #Nathan: so in this case just ignore pair_attn I guess?
+    else:
+        d_out = d_out + d_inp if isinstance(task, WiCTask) else d_out
+        classifier = Classifier.from_params(4 * d_out, n_classes, params)
+        module = PairClassifier(pooler, classifier, pair_attn)
     return module
 
 
@@ -817,8 +881,8 @@ class MultiTaskModel(nn.Module):
         self.uses_pair_embedding = input_module_uses_pair_embedding(args.input_module)
         self.uses_mirrored_pair = input_module_uses_mirrored_pair(args.input_module)
         self.project_before_pooling = not (
-            input_module_uses_pytorch_transformers(args.input_module)
-            and args.transfer_paradigm == "finetune"
+                input_module_uses_pytorch_transformers(args.input_module)
+                and args.transfer_paradigm == "finetune"
         )  # Rough heuristic. TODO: Make this directly user-controllable.
         self.sep_embs_for_skip = args.sep_embs_for_skip
 
@@ -844,12 +908,12 @@ class MultiTaskModel(nn.Module):
         elif isinstance(task, GLUEDiagnosticTask):
             out = self._nli_diagnostic_forward(batch, task, predict)
         elif isinstance(
-            task, (PairClassificationTask, PairRegressionTask, PairOrdinalRegressionTask)
+                task, (PairClassificationTask, PairRegressionTask, PairOrdinalRegressionTask)
         ):
             out = self._pair_sentence_forward(batch, task, predict)
         elif isinstance(task, LanguageModelingTask):
             if isinstance(self.sent_encoder._phrase_layer, ONLSTMStack) or isinstance(
-                self.sent_encoder._phrase_layer, PRPN
+                    self.sent_encoder._phrase_layer, PRPN
             ):
                 out = self._lm_only_lr_forward(batch, task)
             else:
@@ -914,7 +978,7 @@ class MultiTaskModel(nn.Module):
             if isinstance(task, RegressionTask):
                 if logits.ndimension() > 1:
                     assert (
-                        logits.ndimension() == 2 and logits[-1] == 1
+                            logits.ndimension() == 2 and logits[-1] == 1
                     ), "Invalid regression prediction dimensions!"
                     logits = logits.squeeze(-1)
                 out["preds"] = logits
@@ -987,7 +1051,7 @@ class MultiTaskModel(nn.Module):
                 # raw_sentence/question is space-separated
                 # Adjust -1 for [CLS]/<SOS>
                 "span": [
-                    " ".join(raw_sentence.split()[span_start[i] - 1 : span_end[i]])
+                    " ".join(raw_sentence.split()[span_start[i] - 1: span_end[i]])
                     for i, raw_sentence in enumerate(batch["raw_sentence"])
                 ],
             }
@@ -1037,7 +1101,7 @@ class MultiTaskModel(nn.Module):
             if isinstance(task, RegressionTask):
                 if logits.ndimension() > 1:
                     assert (
-                        logits.ndimension() == 2 and logits[-1] == 1
+                            logits.ndimension() == 2 and logits[-1] == 1
                     ), "Invalid regression prediction dimensions!"
                     logits = logits.squeeze(-1)
                 out["preds"] = logits
@@ -1148,9 +1212,9 @@ class MultiTaskModel(nn.Module):
 
         # Split encoder outputs by direction
         split = int(self.sent_encoder._phrase_layer.get_output_dim() / 2)
-        fwd, bwd = sent[:, :, :split], sent[:, :, split : split * 2]
+        fwd, bwd = sent[:, :, :split], sent[:, :, split: split * 2]
         if split * 2 < sent.size(2):  # skip embeddings
-            out_embs = sent[:, :, split * 2 :]
+            out_embs = sent[:, :, split * 2:]
             fwd = torch.cat([fwd, out_embs], dim=2)
             bwd = torch.cat([bwd, out_embs], dim=2)
 
@@ -1334,7 +1398,7 @@ def input_module_uses_mirrored_pair(input_module):
     running on symmetrical pair tasks, like what GPT do on STS-B
     """
     return (
-        input_module.startswith("openai-gpt")
-        or input_module.startswith("gpt2")
-        or input_module.startswith("transfo-xl-")
+            input_module.startswith("openai-gpt")
+            or input_module.startswith("gpt2")
+            or input_module.startswith("transfo-xl-")
     )

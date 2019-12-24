@@ -18,6 +18,7 @@ matplotlib.use('TkAgg')
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import random
 
 import nltk
 from torch.nn.modules.activation import MultiheadAttention
@@ -31,6 +32,7 @@ flags.DEFINE_integer("d_emb", 12, "Size of token encodings before contextualizat
 flags.DEFINE_integer("d_hidden", 72, "Size of token encodings in hidden layers (contextualized)")
 flags.DEFINE_integer("nb_heads", 8, "Number of attention heads")
 flags.DEFINE_integer("target_length", 20, "Number of tokens in target sequence")
+flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")
 flags.DEFINE_integer("source_length", 20, "Number of tokens in source sequence")
 flags.DEFINE_integer("max_seq_length", 20, "Maximum number of words to consider per batch")
 flags.DEFINE_string("data_folder", "./data/Gutenberg", "Folder with train, val and test subfolders containing data")
@@ -43,6 +45,11 @@ flags.DEFINE_bool("mini", True, "Whether to work with mini data/models for debug
 
 # %%
 
+def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683
+    masked_indices = random.sample(range(len(tokens)),int(len(tokens)*.15)) # TODO finish this creating of input and target fields
+    return 1,2
+
+
 class GutenbergReader(DatasetReader):
 
     def __init__(self, token_indexers=None):
@@ -50,6 +57,7 @@ class GutenbergReader(DatasetReader):
         self.token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
 
     def text_to_instance(self, tokens, tags=None):
+        inputs, targets = t5_denoise_spans_objective(tokens)
         sentence_field = TextField(tokens, self.token_indexers)
         fields = {"sentence": sentence_field}
 
@@ -75,15 +83,37 @@ class GutenbergReader(DatasetReader):
                         yield self.text_to_instance([Token(word) for word in current_sequence])
 
 class FullModel(nn.Module):
-    def __init__(self):
+    def __init__(self,vocab):
+        """
+        phase: either 'pretrain' or
+        """
+
+        self.embedder = AlbertEmbedder(vocab)
         self.attention = AttentionLayer()
 
     def forward(self, input):
-        embedded = self.embedding(input)
+        embedded = self.embedder(input)
         encoded = self.attention(embedded)
-        # TODO decide on task: MLM, LM, permutation LM
+        prediction = self.predict(encoded,self.phase)
+        # TODO decide on task: MLM, LM, permutation LM, Ernies masking
+        # TODO add text-to-text objective like t5?
 
 
+    def lm(dataset): # inspired by from https://github.com/google-research/text-to-text-transfer-transformer/blob/master/t5/data/preprocessors.py
+        """Basic language modeling objective for text - empty inputs.
+        Given inputs with the format:
+        {"text": "Here is some text."}
+        This preprocess produces examples with the format
+        {"inputs": "", "targets": "Here is some text."}
+        Args:
+          dataset: A tf.data.Dataset to process.
+        Returns:
+          A preprocessed tf.data.Dataset.
+        """
+        return dataset.map(
+            lambda x: {'inputs': '', 'targets': x['text']},
+            num_parallel_calls=tf.data.experimental.AUTOTUNE,
+        )
 
 
 
@@ -134,28 +164,22 @@ class AlbertEmbedder(nn.Module):
         return self.embedding_to_hidden(self.index_to_embedding(input))
 
 
-
-class MyModel(nn.Module):
-    def __init__(self,vocab):
-        super().__init__()
-        self.embedder = AlbertEmbedder(vocab)
-
-    def forward(self, *input: Any, **kwargs: Any) -> T_co:
-
-
-
 def main(_):
-    reader = GutenbergReader()
+    reader = GutenbergReader() #TODO add COPA task later
     train_dataset = reader.read(os.path.join(FLAGS.data_folder,'train'))
     test_dataset = reader.read(os.path.join(FLAGS.data_folder,'test'))
     val_dataset = reader.read(os.path.join(FLAGS.data_folder,'val'))
-    vocab = Vocabulary.from_instances(train_dataset + val_dataset)
 
-    model = MyModel(vocab)
+    masking_tokens = [f'MASK_{i}' for i in range(int(FLAGS.target_length*FLAGS.masking_fraction))]
+    masking_token_instances = [reader.text_to_instance([Token(word) for word in masking_tokens])]
+
+    vocab = Vocabulary.from_instances(masking_token_instances + train_dataset + val_dataset)
+
+    model = FullModel(vocab)
     cuda_device = 0
     model = model.cuda(cuda_device)
 
-    optimizer = optim.Adam()
+    optimizer = optim.Adam(model.parameters())
 
     iterator = BucketIterator(batch_size=FLAGS.d_batch, sorting_keys=[("sentence", "num_tokens")])
     iterator.index_with(vocab)

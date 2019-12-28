@@ -13,12 +13,13 @@ import matplotlib.pyplot as plt
 from allennlp.data import DatasetReader, Instance, Token, Vocabulary
 from allennlp.data.fields import TextField, SequenceLabelField
 from allennlp.data.token_indexers import SingleIdTokenIndexer
-
+import operator
 matplotlib.use('TkAgg')
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import random
+import itertools
 
 import nltk
 from torch.nn.modules.activation import MultiheadAttention
@@ -46,8 +47,20 @@ flags.DEFINE_bool("mini", True, "Whether to work with mini data/models for debug
 # %%
 
 def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683
-    masked_indices = random.sample(range(len(tokens)),int(len(tokens)*.15)) # TODO finish this creating of input and target fields
-    return 1,2
+    masked_indices = sorted(random.sample(range(len(tokens)),int(len(tokens)*FLAGS.masking_fraction))) # TODO finish this creating of given and target fields
+
+    given = [t if (i not in masked_indices) else '@@MASK@@' for i, t in enumerate(tokens)]
+    masked_given = [i for i, j in zip(given[1:], given[:-1]) if not (i == '@@MASK@@' and i == j)]
+    mask_counter = itertools.count()
+    unique_masked_given = [f'{i}_{next(mask_counter)}' if i == '@@MASK@@' else i for i in masked_given]
+
+    target = [tokens[i] for i in masked_indices]
+    include_mask = [True] + [((i - j) != 1) for i, j in zip(masked_indices[1:], masked_indices[:-1])]
+    masks = ['@@MASK@@' if x else '@@TO_BE_DELETED@@' for x in include_mask]
+    masked_target = [i for j in zip(masks, target) for i in j if i != '@@TO_BE_DELETED@@']
+    mask_counter = itertools.count() #Restart count
+    unique_masked_target = [f'{i}_{next(mask_counter)}' if i == '@@MASK@@' else i for i in masked_target]
+    return unique_masked_given, unique_masked_target
 
 
 class GutenbergReader(DatasetReader):
@@ -170,8 +183,8 @@ def main(_):
     test_dataset = reader.read(os.path.join(FLAGS.data_folder,'test'))
     val_dataset = reader.read(os.path.join(FLAGS.data_folder,'val'))
 
-    masking_tokens = [f'MASK_{i}' for i in range(int(FLAGS.target_length*FLAGS.masking_fraction))]
-    masking_token_instances = [reader.text_to_instance([Token(word) for word in masking_tokens])]
+    # masking_tokens = [f'MASK_{i}' for i in range(int(FLAGS.target_length*FLAGS.masking_fraction))]
+    # masking_token_instances = [reader.text_to_instance([Token(word) for word in masking_tokens])]
 
     vocab = Vocabulary.from_instances(masking_token_instances + train_dataset + val_dataset)
 

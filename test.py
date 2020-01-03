@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Any, T_co
 
+from allennlp.models import Model
 from allennlp.data.iterators import BucketIterator
 from allennlp.training import Trainer
 from spacy.lang.en import English  # updated
@@ -97,20 +98,19 @@ class GutenbergReader(DatasetReader):
                         running_sequence = running_sequence[FLAGS.max_seq_length:]
                         yield self.text_to_instance([Token(word) for word in current_sequence])
 
-class FullModel(nn.Module):
+class FullModel(Model):
     def __init__(self,vocab):
         """
-        phase: either 'pretrain' or
         """
+        super().__init__(vocab)
 
         self.embedder = AlbertEmbedder(vocab)
         self.attention = AttentionLayer()
 
-    def forward(self, input):
-        embedded = self.embedder(input)
+    def forward(self, inputs, targets):
+        embedded = self.embedder(inputs['tokens'])
         encoded = self.attention(embedded)
         prediction = self.predict(encoded,self.phase)
-        # TODO decide on task: MLM, LM, permutation LM, Ernies masking
         # TODO add text-to-text objective like t5?
 
 
@@ -148,19 +148,19 @@ class MultiHeadAttention(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.project_q = nn.Linear(FLAGS.d_emb, FLAGS.d_emb)
-        self.project_k = nn.Linear(FLAGS.d_emb, FLAGS.d_emb)
-        self.project_v = nn.Linear(FLAGS.d_emb, FLAGS.d_emb)
+        self.project_q = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
+        self.project_k = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
+        self.project_v = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
 
     def forward(self, input):
         q = self.project_q(input)
         k = self.project_k(input)
         v = self.project_v(input)
-        assert FLAGS.d_emb % FLAGS.nb_heads == 0
-        d_head_emb = FLAGS.d_emb // FLAGS.nb_heads
-        q_multi_parts = q.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, FLAGS.target_length, d_head_emb)
-        k_multi_parts = k.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, FLAGS.source_length, d_head_emb)
-        v_multi_parts = v.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, FLAGS.source_length, d_head_emb)
+        assert FLAGS.d_hidden % FLAGS.nb_heads == 0
+        d_head_hidden = FLAGS.d_hidden // FLAGS.nb_heads
+        q_multi_parts = q.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, FLAGS.target_length, d_head_hidden) #TODO solve mismatch between target_length and actual length after masking possibly multiple words with one token
+        k_multi_parts = k.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, FLAGS.source_length, d_head_hidden)
+        v_multi_parts = v.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, FLAGS.source_length, d_head_hidden)
         att_weights = torch.bmm(q_multi_parts, k_multi_parts.transpose(1, 2))
         att_output_multi_parts = torch.bmm(att_weights, v_multi_parts)
         att_output = att_output_multi_parts.contiguous().view(FLAGS.d_batch, FLAGS.target_length, FLAGS.d_emb)
@@ -173,10 +173,10 @@ class AlbertEmbedder(nn.Module):
     """
     def __init__(self,vocab):
         super().__init__()
-        self.index_to_embedding = nn.Linear(vocab.get_vocab_size('tokens'), FLAGS.d_emb)
+        self.embedding_matrix = torch.rand(vocab.get_vocab_size('tokens'), FLAGS.d_emb)
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
     def forward(self, input):
-        return self.embedding_to_hidden(self.index_to_embedding(input))
+        return self.embedding_to_hidden(self.embedding_matrix[input].cuda())
 
 
 def main(_):
@@ -185,10 +185,7 @@ def main(_):
     test_dataset = reader.read(os.path.join(FLAGS.data_folder,'test'))
     val_dataset = reader.read(os.path.join(FLAGS.data_folder,'val'))
 
-    # masking_tokens = [f'MASK_{i}' for i in range(int(FLAGS.target_length*FLAGS.masking_fraction))]
-    # masking_token_instances = [reader.text_to_instance([Token(word) for word in masking_tokens])]
-
-    vocab = Vocabulary.from_instances(masking_token_instances + train_dataset + val_dataset)
+    vocab = Vocabulary.from_instances(train_dataset + val_dataset)
 
     model = FullModel(vocab)
     cuda_device = 0
@@ -196,7 +193,7 @@ def main(_):
 
     optimizer = optim.Adam(model.parameters())
 
-    iterator = BucketIterator(batch_size=FLAGS.d_batch, sorting_keys=[("sentence", "num_tokens")])
+    iterator = BucketIterator(batch_size=FLAGS.d_batch, sorting_keys=[("inputs", "num_tokens")])
     iterator.index_with(vocab)
 
     trainer = Trainer(model=model,

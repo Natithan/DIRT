@@ -40,7 +40,7 @@ flags.DEFINE_string("data_folder", "./data/Gutenberg", "Folder with train, val a
 
 # Trainer flags
 flags.DEFINE_integer("patience", 10, "Number of epochs the validation metric can worsen before stopping training.")
-flags.DEFINE_integer("num_epochs", 1000, "Numnber of epochs to train for.")
+flags.DEFINE_integer("num_epochs", 1000, "Number of epochs to train for.")
 
 flags.DEFINE_bool("mini", True, "Whether to work with mini data/models for debugging purposes")
 
@@ -52,14 +52,14 @@ def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https:
     given = [t if (i not in masked_indices) else '@@MASK@@' for i, t in enumerate(tokens)]
     masked_given = [i for i, j in zip(given[1:], given[:-1]) if not (i == '@@MASK@@' and i == j)]
     mask_counter = itertools.count()
-    unique_masked_given = [f'{i}_{next(mask_counter)}' if i == '@@MASK@@' else i for i in masked_given]
+    unique_masked_given = [Token(f'{i}_{next(mask_counter)}') if i == '@@MASK@@' else i for i in masked_given]
 
     target = [tokens[i] for i in masked_indices]
     include_mask = [True] + [((i - j) != 1) for i, j in zip(masked_indices[1:], masked_indices[:-1])]
     masks = ['@@MASK@@' if x else '@@TO_BE_DELETED@@' for x in include_mask]
     masked_target = [i for j in zip(masks, target) for i in j if i != '@@TO_BE_DELETED@@']
     mask_counter = itertools.count() #Restart count
-    unique_masked_target = [f'{i}_{next(mask_counter)}' if i == '@@MASK@@' else i for i in masked_target]
+    unique_masked_target = [Token(f'{i}_{next(mask_counter)}') if i == '@@MASK@@' else i for i in masked_target]
     return unique_masked_given, unique_masked_target
 
 
@@ -71,12 +71,14 @@ class GutenbergReader(DatasetReader):
 
     def text_to_instance(self, tokens, tags=None):
         inputs, targets = t5_denoise_spans_objective(tokens)
-        sentence_field = TextField(tokens, self.token_indexers)
-        fields = {"sentence": sentence_field}
+        input_field = TextField(inputs, self.token_indexers)
+        target_field = TextField(targets, self.token_indexers)
+        fields = {"inputs": input_field,
+                  "targets": target_field}
 
-        if tags:
-            label_field = SequenceLabelField(labels=tags, sequence_field=sentence_field)
-            fields["labels"] = label_field
+        # if tags:
+        #     label_field = SequenceLabelField(labels=tags, sequence_field=sentence_field)
+        #     fields["labels"] = label_field
 
         return Instance(fields)
 

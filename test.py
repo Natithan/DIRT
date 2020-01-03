@@ -33,9 +33,9 @@ flags.DEFINE_integer("d_batch", 3, "Batch size")
 flags.DEFINE_integer("d_emb", 12, "Size of token encodings before contextualization")
 flags.DEFINE_integer("d_hidden", 72, "Size of token encodings in hidden layers (contextualized)")
 flags.DEFINE_integer("nb_heads", 8, "Number of attention heads")
-flags.DEFINE_integer("target_length", 20, "Number of tokens in target sequence")
+# flags.DEFINE_integer("target_length", 20, "Number of tokens in target sequence")
 flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")
-flags.DEFINE_integer("source_length", 20, "Number of tokens in source sequence")
+# flags.DEFINE_integer("source_length", 20, "Number of tokens in source sequence")
 flags.DEFINE_integer("max_seq_length", 20, "Maximum number of words to consider per batch")
 flags.DEFINE_string("data_folder", "./data/Gutenberg", "Folder with train, val and test subfolders containing data")
 
@@ -136,7 +136,7 @@ class AttentionLayer(nn.Module):
     def __init__(self):
         super().__init__()
         self.multihead_attention = MultiHeadAttention()
-        self.feedforward = nn.Linear(FLAGS.d_emb, FLAGS.d_emb)
+        self.feedforward = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
 
     def forward(self, input):
         att_out = self.multihead_attention(input) + input  # Include skip-connection
@@ -158,12 +158,13 @@ class MultiHeadAttention(nn.Module):
         v = self.project_v(input)
         assert FLAGS.d_hidden % FLAGS.nb_heads == 0
         d_head_hidden = FLAGS.d_hidden // FLAGS.nb_heads
-        q_multi_parts = q.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, FLAGS.target_length, d_head_hidden) #TODO solve mismatch between target_length and actual length after masking possibly multiple words with one token
-        k_multi_parts = k.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, FLAGS.source_length, d_head_hidden)
-        v_multi_parts = v.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, FLAGS.source_length, d_head_hidden)
+        sentence_length = input.shape[1] # both query and keys come from same sentence: single length needed
+        q_multi_parts = q.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, sentence_length, d_head_hidden) #TODO solve mismatch between target_length and actual length after masking possibly multiple words with one token
+        k_multi_parts = k.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, sentence_length, d_head_hidden)
+        v_multi_parts = v.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, sentence_length, d_head_hidden)
         att_weights = torch.bmm(q_multi_parts, k_multi_parts.transpose(1, 2))
         att_output_multi_parts = torch.bmm(att_weights, v_multi_parts)
-        att_output = att_output_multi_parts.contiguous().view(FLAGS.d_batch, FLAGS.target_length, FLAGS.d_emb)
+        att_output = att_output_multi_parts.contiguous().view(FLAGS.d_batch, sentence_length, FLAGS.d_hidden)
         return att_output
 
 

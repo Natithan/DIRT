@@ -45,6 +45,8 @@ flags.DEFINE_integer("num_epochs", 1000, "Number of epochs to train for.")
 
 flags.DEFINE_bool("mini", True, "Whether to work with mini data/models for debugging purposes")
 
+flags.DEFINE_integer("nb_encoder_layers", 2, "Number of layers in the encoder.")
+flags.DEFINE_integer("nb_decoder_layers", 2, "Number of layers in the decoder.")
 # %%
 
 def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683
@@ -105,13 +107,16 @@ class FullModel(Model):
         super().__init__(vocab)
 
         self.embedder = AlbertEmbedder(vocab)
-        self.attention = AttentionLayer()
+        self.encoder = nn.Sequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)]) #TODO add layer normalization TODO and dropout :P check this https://mlexplained.com/2018/01/13/weight-normalization-and-layer-normalization-explained-normalization-in-deep-learning-part-2/
+        self.decoder =
 
     def forward(self, inputs, targets):
         embedded = self.embedder(inputs['tokens'])
-        encoded = self.attention(embedded)
-        prediction = self.predict(encoded,self.phase)
-        # TODO add text-to-text objective like t5?
+        encoded = self.encoder(embedded)
+        decoded = self.decoder(encoded)
+        prediction = nn.Softmax()(nn.Linear(FLAGS.d_hidden, FLAGS.d_vocab)(decoded)) #TODO add d_vocab
+
+        # TODO add text-to-text objective like t5? Probs by adding decoder
 
 
     def lm(dataset): # inspired by from https://github.com/google-research/text-to-text-transfer-transformer/blob/master/t5/data/preprocessors.py
@@ -132,7 +137,7 @@ class FullModel(Model):
 
 
 
-class AttentionLayer(nn.Module):
+class EncoderBlock(nn.Module):
     def __init__(self):
         super().__init__()
         self.multihead_attention = MultiHeadAttention()
@@ -143,6 +148,17 @@ class AttentionLayer(nn.Module):
         ff_out = self.feedforward(att_out) + att_out
         return ff_out
 
+class DecoderBlock(nn.Module): # TODO
+    def __init__(self):
+        super().__init__()
+        self.multihead_attention = MultiHeadAttention()
+        self.feedforward = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
+
+    def forward(self, encoded_input, output):
+        self_att_out = normalize(self.multihead_attention(output) + output)  # Include skip-connection and layer normalization
+        att_out = normalize(self.multihead_attention(encoded_input, self_att_out)) #TODO make multihead attention accept different values for query and keys
+        ff_out = normalize(self.feedforward(att_out) + att_out)
+        return ff_out
 
 class MultiHeadAttention(nn.Module):
 
@@ -207,7 +223,7 @@ def main(_):
                       cuda_device=cuda_device)
     trainer.train()
     input = torch.rand(FLAGS.d_batch, FLAGS.source_length, FLAGS.d_emb)
-    output = AttentionLayer()(input)
+    output = EncoderBlock()(input)
     # loss =
     print(output)
 

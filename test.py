@@ -50,7 +50,7 @@ flags.DEFINE_integer("nb_decoder_layers", 2, "Number of layers in the decoder.")
 # %%
 
 def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683
-    masked_indices = sorted(random.sample(range(len(tokens)),int(len(tokens)*FLAGS.masking_fraction))) # TODO finish this creating of given and target fields
+    masked_indices = sorted(random.sample(range(len(tokens)),int(len(tokens)*FLAGS.masking_fraction)))
 
     given = [t if (i not in masked_indices) else '@@MASK@@' for i, t in enumerate(tokens)]
     masked_given = [i for i, j in zip(given[1:], given[:-1]) if not (i == '@@MASK@@' and i == j)]
@@ -108,13 +108,14 @@ class FullModel(Model):
 
         self.embedder = AlbertEmbedder(vocab)
         self.encoder = nn.Sequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)]) #TODO add layer normalization TODO and dropout :P check this https://mlexplained.com/2018/01/13/weight-normalization-and-layer-normalization-explained-normalization-in-deep-learning-part-2/
-        self.decoder =
+        self.decoder = nn.Sequential(*[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
 
     def forward(self, inputs, targets):
         embedded = self.embedder(inputs['tokens'])
         encoded = self.encoder(embedded)
         decoded = self.decoder(encoded)
         prediction = nn.Softmax()(nn.Linear(FLAGS.d_hidden, FLAGS.d_vocab)(decoded)) #TODO add d_vocab
+        loss = f(prediction,targets)
 
         # TODO add text-to-text objective like t5? Probs by adding decoder
 

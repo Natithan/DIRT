@@ -14,3 +14,12 @@ loss = .5*(correct - act_2)**2
 print(5)
 
 
+av1 = torch.tensor(1.)
+av2 = torch.tensor(2.)
+v1 = torch.tensor(3.)
+v2 = torch.tensor(4.)
+v1.requires_grad_()
+v2.requires_grad_()
+o = av1*v1+av2*v2
+l = 10 - o
+l.backward()

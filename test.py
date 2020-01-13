@@ -47,6 +47,8 @@ flags.DEFINE_bool("mini", True, "Whether to work with mini data/models for debug
 
 flags.DEFINE_integer("nb_encoder_layers", 2, "Number of layers in the encoder.")
 flags.DEFINE_integer("nb_decoder_layers", 2, "Number of layers in the decoder.")
+flags.DEFINE_integer("nb_feedforward_layers", 2, "Number of layers in the feedforward subcomponents of the transformer.")
+
 # %%
 
 def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683
@@ -62,7 +64,7 @@ def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https:
     masks = ['@@MASK@@' if x else '@@TO_BE_DELETED@@' for x in include_mask]
     masked_target = [i for j in zip(masks, target) for i in j if i != '@@TO_BE_DELETED@@']
     mask_counter = itertools.count() #Restart count
-    unique_masked_target = [Token(f'{i}_{next(mask_counter)}') if i == '@@MASK@@' else i for i in masked_target]
+    unique_masked_target = [Token(f'{i}_{next(mask_counter)}') if i == '@@MASK@@' else i for i in masked_target] + ['@@MASK_EOS@@']
     return unique_masked_given, unique_masked_target
 
 
@@ -107,58 +109,77 @@ class FullModel(Model):
         super().__init__(vocab)
 
         self.embedder = AlbertEmbedder(vocab)
-        self.encoder = nn.Sequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)]) #TODO add layer normalization TODO and dropout :P check this https://mlexplained.com/2018/01/13/weight-normalization-and-layer-normalization-explained-normalization-in-deep-learning-part-2/
+        self.encoder = nn.Sequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
         self.decoder = nn.Sequential(*[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
 
+
+    def decoder(self,encoded):
+        pass
+
+
     def forward(self, inputs, targets):
-        embedded = self.embedder(inputs['tokens'])
-        encoded = self.encoder(embedded)
-        decoded = self.decoder(encoded)
-        prediction = nn.Softmax()(nn.Linear(FLAGS.d_hidden, FLAGS.d_vocab)(decoded)) #TODO add d_vocab
+        embedded_inputs = self.embedder(inputs['tokens'])
+        embedded_outputs = torch.zeros(FLAGS.max_seq_length + 2) #Worst case
+        encoded = self.encoder(nn.Dropout()(embedded_inputs))
+        decoded = self.decoder(nn.Dropout()(encoded)) #TODO add masked predicted output as second parameter here
+        prediction = nn.Softmax()(nn.Linear(FLAGS.d_hidden, FLAGS.d_vocab)(nn.Dropout()(decoded))) #TODO add d_vocab
         loss = f(prediction,targets)
+        return loss
 
         # TODO add text-to-text objective like t5? Probs by adding decoder
+        # TODO add position embedding
+
+    # def lm(dataset): # inspired by from https://github.com/google-research/text-to-text-transfer-transformer/blob/master/t5/data/preprocessors.py
+    #     """Basic language modeling objective for text - empty inputs.
+    #     Given inputs with the format:
+    #     {"text": "Here is some text."}
+    #     This preprocess produces examples with the format
+    #     {"inputs": "", "targets": "Here is some text."}
+    #     Args:
+    #       dataset: A tf.data.Dataset to process.
+    #     Returns:
+    #       A preprocessed tf.data.Dataset.
+    #     """
+    #     return dataset.map(
+    #         lambda x: {'inputs': '', 'targets': x['text']},
+    #         num_parallel_calls=tf.data.experimental.AUTOTUNE,
+    #     )
 
 
-    def lm(dataset): # inspired by from https://github.com/google-research/text-to-text-transfer-transformer/blob/master/t5/data/preprocessors.py
-        """Basic language modeling objective for text - empty inputs.
-        Given inputs with the format:
-        {"text": "Here is some text."}
-        This preprocess produces examples with the format
-        {"inputs": "", "targets": "Here is some text."}
-        Args:
-          dataset: A tf.data.Dataset to process.
-        Returns:
-          A preprocessed tf.data.Dataset.
-        """
-        return dataset.map(
-            lambda x: {'inputs': '', 'targets': x['text']},
-            num_parallel_calls=tf.data.experimental.AUTOTUNE,
-        )
-
-
+def layer_normalize(param):
+    mean = torch.mean(param, -1)
+    mean_expanded = mean.unsqueeze(-1).expand(*(mean.shape + (param.shape[-1],)))
+    st_dev = torch.sqrt(torch.mean((param - mean_expanded)**2, -1))
+    st_dev_expanded = st_dev.unsqueeze(-1).expand(*(mean.shape + (param.shape[-1],)))
+    return (param - mean_expanded) / st_dev_expanded
 
 class EncoderBlock(nn.Module):
     def __init__(self):
         super().__init__()
         self.multihead_attention = MultiHeadAttention()
-        self.feedforward = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
+        # Dropout after every feedforward layer
+        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout()) ])
 
     def forward(self, input):
-        att_out = self.multihead_attention(input) + input  # Include skip-connection
-        ff_out = self.feedforward(att_out) + att_out
+        att_out = layer_normalize(self.multihead_attention(input) + nn.Dropout()(input))  # Include skip-connection
+        ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout()(att_out))
         return ff_out
+
+
+
 
 class DecoderBlock(nn.Module): # TODO
     def __init__(self):
         super().__init__()
         self.multihead_attention = MultiHeadAttention()
-        self.feedforward = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
+        # Dropout after every feedforward layer
+        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout()) ])
 
     def forward(self, encoded_input, output):
-        self_att_out = normalize(self.multihead_attention(output) + output)  # Include skip-connection and layer normalization
-        att_out = normalize(self.multihead_attention(encoded_input, self_att_out)) #TODO make multihead attention accept different values for query and keys
-        ff_out = normalize(self.feedforward(att_out) + att_out)
+        output = layer_normalize(output)
+        self_att_out = layer_normalize(self.multihead_attention(output) + nn.Dropout()(output))  # Include skip-connection and layer normalization
+        att_out = layer_normalize(self.multihead_attention(encoded_input, self_att_out)) #TODO make multihead attention accept different values for query and keys
+        ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout()(att_out))
         return ff_out
 
 class MultiHeadAttention(nn.Module):
@@ -176,10 +197,11 @@ class MultiHeadAttention(nn.Module):
         assert FLAGS.d_hidden % FLAGS.nb_heads == 0
         d_head_hidden = FLAGS.d_hidden // FLAGS.nb_heads
         sentence_length = input.shape[1] # both query and keys come from same sentence: single length needed
-        q_multi_parts = q.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, sentence_length, d_head_hidden) #TODO solve mismatch between target_length and actual length after masking possibly multiple words with one token
+        q_multi_parts = q.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, sentence_length, d_head_hidden)
         k_multi_parts = k.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, sentence_length, d_head_hidden)
         v_multi_parts = v.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, sentence_length, d_head_hidden)
         att_weights = torch.bmm(q_multi_parts, k_multi_parts.transpose(1, 2))
+        att_weights = nn.Dropout()(att_weights)
         att_output_multi_parts = torch.bmm(att_weights, v_multi_parts)
         att_output = att_output_multi_parts.contiguous().view(FLAGS.d_batch, sentence_length, FLAGS.d_hidden)
         return att_output

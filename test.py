@@ -117,13 +117,13 @@ class FullModel(Model):
         self.encoder = nn.Sequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
 
 
-    def decoder(self,encoded):
+    def decoder(self,encoded): #TODO make sure decoder is also part of actual model (so moving to GPU propagates inside decoder)
         return nn.Sequential(*[DecoderBlock(encoded) for _ in range(FLAGS.nb_encoder_layers)])
 
 
     def forward(self, inputs, targets):
         embedded_inputs = self.embedder(inputs['tokens'])
-        embedded_outputs = torch.zeros(FLAGS.d_batch, int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1),FLAGS.d_hidden).cuda() # Longest length if no adjacent masks
+        embedded_outputs = torch.rand(FLAGS.d_batch, int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1),FLAGS.d_hidden).cuda() # Longest length if no adjacent masks
         encoded = self.encoder(nn.Dropout()(embedded_inputs))
         decoded = self.decoder(encoded)(nn.Dropout()(embedded_outputs)) #TODO add masked predicted output as second parameter here
         prediction = nn.Softmax()(nn.Linear(FLAGS.d_hidden, FLAGS.d_vocab)(nn.Dropout()(decoded))) #TODO add d_vocab
@@ -181,7 +181,7 @@ class DecoderBlock(nn.Module): # TODO
         self.encoded_input = encoded_input
 
     def forward(self, output):
-        output = layer_normalize(output) #TODO mayb initialize with nonzero values to net mess up layer normalization
+        output = layer_normalize(output) #TODO maybe initialize with nonzero values to net mess up layer normalization
         self_att_out = layer_normalize(self.multihead_attention(self.encoded_input, output) + nn.Dropout()(output))  # Include skip-connection and layer normalization
         att_out = layer_normalize(self.multihead_attention(self.encoded_input, self_att_out)) #TODO make multihead attention accept different values for query and keys
         ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout()(att_out))

@@ -106,6 +106,13 @@ class GutenbergReader(DatasetReader):
 def f(prediction, targets): #TODO
     pass
 
+class Decoder(Model):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, encoded_inputs, embedded_outputs):
+        return nn.Sequential(*[DecoderBlock(encoded_inputs) for _ in range(FLAGS.nb_encoder_layers)]) #TODO do this but make it work :P
+
 
 class FullModel(Model):
     def __init__(self,vocab):
@@ -181,9 +188,9 @@ class DecoderBlock(nn.Module): # TODO
         self.encoded_input = encoded_input
 
     def forward(self, output):
-        output = layer_normalize(output) #TODO maybe initialize with nonzero values to net mess up layer normalization
+        output = layer_normalize(output)
         self_att_out = layer_normalize(self.multihead_attention(self.encoded_input, output) + nn.Dropout()(output))  # Include skip-connection and layer normalization
-        att_out = layer_normalize(self.multihead_attention(self.encoded_input, self_att_out)) #TODO make multihead attention accept different values for query and keys
+        att_out = layer_normalize(self.multihead_attention(self.encoded_input, self_att_out))
         ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout()(att_out))
         return ff_out
 

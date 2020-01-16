@@ -22,8 +22,6 @@ import torch.optim as optim
 import random
 import itertools
 
-import nltk
-from torch.nn.modules.activation import MultiheadAttention
 from absl import app
 from absl import flags
 
@@ -106,13 +104,6 @@ class GutenbergReader(DatasetReader):
 def f(prediction, targets): #TODO
     pass
 
-class Decoder(Model):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, encoded_inputs, embedded_outputs):
-        return nn.Sequential(*[DecoderBlock(encoded_inputs) for _ in range(FLAGS.nb_encoder_layers)]) #TODO do this but make it work :P
-
 
 class FullModel(Model):
     def __init__(self,vocab):
@@ -122,17 +113,14 @@ class FullModel(Model):
 
         self.embedder = AlbertEmbedder(vocab)
         self.encoder = nn.Sequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
-
-
-    def decoder(self,encoded): #TODO make sure decoder is also part of actual model (so moving to GPU propagates inside decoder)
-        return nn.Sequential(*[DecoderBlock(encoded) for _ in range(FLAGS.nb_encoder_layers)])
+        self.decoder = MySequential(*[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
 
 
     def forward(self, inputs, targets):
         embedded_inputs = self.embedder(inputs['tokens'])
         embedded_outputs = torch.rand(FLAGS.d_batch, int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1),FLAGS.d_hidden).cuda() # Longest length if no adjacent masks
         encoded = self.encoder(nn.Dropout()(embedded_inputs))
-        decoded = self.decoder(encoded)(nn.Dropout()(embedded_outputs)) #TODO add masked predicted output as second parameter here
+        decoded,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded)
         prediction = nn.Softmax()(nn.Linear(FLAGS.d_hidden, FLAGS.d_vocab)(nn.Dropout()(decoded))) #TODO add d_vocab
         loss = f(prediction,targets)
         return loss
@@ -176,33 +164,42 @@ class EncoderBlock(nn.Module):
         ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout()(att_out))
         return ff_out
 
-
+class MySequential(nn.Sequential):
+    def forward(self, *inputs):
+        for module in self._modules.values():
+            if type(inputs) == tuple:
+                inputs = module(*inputs)
+            else:
+                inputs = module(inputs)
+        return inputs
 
 
 class DecoderBlock(nn.Module): # TODO
-    def __init__(self, encoded_input):
+    def __init__(self):
         super().__init__()
-        self.multihead_attention = MultiHeadAttention()
+        self.self_attention = MultiHeadAttention(use_causal_mask=True)
+        self.attention =  MultiHeadAttention()
         # Dropout after every feedforward layer
         self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout()) ])
-        self.encoded_input = encoded_input
 
-    def forward(self, output):
+
+    def forward(self, output, original_encoded_input):
         output = layer_normalize(output)
-        self_att_out = layer_normalize(self.multihead_attention(self.encoded_input, output) + nn.Dropout()(output))  # Include skip-connection and layer normalization
-        att_out = layer_normalize(self.multihead_attention(self.encoded_input, self_att_out))
+        self_att_out = layer_normalize(self.self_attention(query=output, values=output) + nn.Dropout()(output))  # Include skip-connection and layer normalization
+        att_out = layer_normalize(self.attention(query=self_att_out, values=original_encoded_input ))
         ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout()(att_out))
-        return ff_out
+        return ff_out, original_encoded_input
 
 class MultiHeadAttention(nn.Module):
 
-    def __init__(self):
+    def __init__(self,use_causal_mask=False):
         super().__init__()
         self.project_q = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
         self.project_k = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
         self.project_v = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
+        self.use_causal_mask = use_causal_mask
 
-    def forward(self, query,values): #TODO adapt to not-just-self-attention-case
+    def forward(self, query,values):
         q = self.project_q(query)
         k = self.project_k(values)
         v = self.project_v(values)
@@ -214,7 +211,10 @@ class MultiHeadAttention(nn.Module):
         k_multi_parts = k.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, value_length, d_head_hidden)
         v_multi_parts = v.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, value_length, d_head_hidden)
         att_weights = torch.bmm(q_multi_parts, k_multi_parts.transpose(1, 2))
-        att_weights = nn.Dropout()(att_weights)
+        if self.use_causal_mask:
+            causal_mask = torch.tensor([[[1 if value_index <= query_index else 0 for value_index in range(att_weights.shape[2])] for query_index in range(att_weights.shape[1])] for _ in range(att_weights.shape[0])]).cuda()
+            att_weights *= causal_mask
+        att_weights = nn.Dropout()(att_weights) #TODO add causal masking here
         att_output_multi_parts = torch.bmm(att_weights, v_multi_parts)
         att_output = att_output_multi_parts.contiguous().view(FLAGS.d_batch, query_length, FLAGS.d_hidden)
         return att_output

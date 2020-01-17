@@ -110,39 +110,40 @@ class FullModel(Model):
         """
         """
         super().__init__(vocab)
-
+        self.vocab = vocab
         self.embedder = AlbertEmbedder(vocab)
         self.encoder = nn.Sequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
         self.decoder = MySequential(*[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
+        self.predictor = nn.Linear(FLAGS.d_hidden, self.vocab.get_vocab_size())
+        self.loss = nn.CrossEntropyLoss()
 
+
+    def process_targets_for_loss(self, targets,max_target_seq_length):
+        target_tokens = targets['tokens']
+        padding_index = self.vocab.get_token_index('@@PAD@@')
+        current_target_seq_length = target_tokens.shape[1]
+        padder = nn.ConstantPad1d((0, max_target_seq_length - current_target_seq_length), padding_index)
+        target_tokens_contiguous = padder(target_tokens).contiguous().view(-1)
+
+        return target_tokens_contiguous
 
     def forward(self, inputs, targets):
+        max_target_seq_length = int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1) # Longest length if no adjacent masks
+        targets = self.process_targets_for_loss(targets,max_target_seq_length)
         embedded_inputs = self.embedder(inputs['tokens'])
-        embedded_outputs = torch.rand(FLAGS.d_batch, int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1),FLAGS.d_hidden).cuda() # Longest length if no adjacent masks
+        embedded_outputs = torch.rand(FLAGS.d_batch, max_target_seq_length,FLAGS.d_hidden).cuda()
+        padding_index = self.vocab.get_token_index('@@PAD@@')
         encoded = self.encoder(nn.Dropout()(embedded_inputs))
         decoded,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded)
-        prediction = nn.Softmax()(nn.Linear(FLAGS.d_hidden, FLAGS.d_vocab)(nn.Dropout()(decoded))) #TODO add d_vocab
-        loss = f(prediction,targets)
-        return loss
-
+        prediction_distribution = nn.Softmax()(self.predictor(nn.Dropout()(decoded)))
+        prediction_distribution_contiguous = prediction_distribution.contiguous().view(-1,self.vocab.get_vocab_size())
+        prediction = prediction_distribution.max(-1)[1]
+        loss =  self.loss(prediction_distribution_contiguous,targets)
+        return {'loss':loss} # For AllenNLP trainer loop
         # TODO add text-to-text objective like t5? Probs by adding decoder
         # TODO add position embedding
 
-    # def lm(dataset): # inspired by from https://github.com/google-research/text-to-text-transfer-transformer/blob/master/t5/data/preprocessors.py
-    #     """Basic language modeling objective for text - empty inputs.
-    #     Given inputs with the format:
-    #     {"text": "Here is some text."}
-    #     This preprocess produces examples with the format
-    #     {"inputs": "", "targets": "Here is some text."}
-    #     Args:
-    #       dataset: A tf.data.Dataset to process.
-    #     Returns:
-    #       A preprocessed tf.data.Dataset.
-    #     """
-    #     return dataset.map(
-    #         lambda x: {'inputs': '', 'targets': x['text']},
-    #         num_parallel_calls=tf.data.experimental.AUTOTUNE,
-    #     )
+
 
 
 def layer_normalize(param):
@@ -239,6 +240,7 @@ def main(_):
     val_dataset = reader.read(os.path.join(FLAGS.data_folder,'val'))
 
     vocab = Vocabulary.from_instances(train_dataset + val_dataset)
+    vocab.add_token_to_namespace("@@PADDING@@")
 
     model = FullModel(vocab)
     cuda_device = 0
@@ -258,7 +260,7 @@ def main(_):
                       num_epochs=FLAGS.num_epochs,
                       cuda_device=cuda_device)
     trainer.train()
-    input = torch.rand(FLAGS.d_batch, FLAGS.source_length, FLAGS.d_emb)
+    input = torch.rand(FLAGS.d_batch, FLAGS.source_length, FLAGS.d_emb) #TODO maybe add L@ penalty to loss
     output = EncoderBlock()(input)
     # loss =
     print(output)

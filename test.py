@@ -2,6 +2,7 @@
 from __future__ import unicode_literals, print_function
 
 import os
+import sys
 from pathlib import Path
 from typing import Any, T_co
 
@@ -46,7 +47,7 @@ flags.DEFINE_bool("mini", True, "Whether to work with mini data/models for debug
 flags.DEFINE_integer("nb_encoder_layers", 2, "Number of layers in the encoder.")
 flags.DEFINE_integer("nb_decoder_layers", 2, "Number of layers in the decoder.")
 flags.DEFINE_integer("nb_feedforward_layers", 2, "Number of layers in the feedforward subcomponents of the transformer.")
-
+FLAGS(sys.argv)
 # %%
 
 def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683
@@ -132,7 +133,6 @@ class FullModel(Model):
         targets = self.process_targets_for_loss(targets,max_target_seq_length)
         embedded_inputs = self.embedder(inputs['tokens'])
         embedded_outputs = torch.rand(FLAGS.d_batch, max_target_seq_length,FLAGS.d_hidden).cuda()
-        padding_index = self.vocab.get_token_index('@@PAD@@')
         encoded = self.encoder(nn.Dropout()(embedded_inputs))
         decoded,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded)
         prediction_distribution = nn.Softmax()(self.predictor(nn.Dropout()(decoded)))
@@ -140,7 +140,6 @@ class FullModel(Model):
         prediction = prediction_distribution.max(-1)[1]
         loss =  self.loss(prediction_distribution_contiguous,targets)
         return {'loss':loss} # For AllenNLP trainer loop
-        # TODO add text-to-text objective like t5? Probs by adding decoder
         # TODO add position embedding
 
 
@@ -192,6 +191,9 @@ class DecoderBlock(nn.Module): # TODO
         return ff_out, original_encoded_input
 
 class MultiHeadAttention(nn.Module):
+    # relative position embedding with d_emb=1 (aka a scalar), shared across layers, but different between attention heads, in line with t5 paper
+    # nb of possible relative positions ranges from - max_seq_length to + max_seq_length
+    position_embedding = torch.rand(FLAGS.nb_heads,FLAGS.max_seq_length*2)
 
     def __init__(self,use_causal_mask=False):
         super().__init__()
@@ -215,8 +217,13 @@ class MultiHeadAttention(nn.Module):
         if self.use_causal_mask:
             causal_mask = torch.tensor([[[1 if value_index <= query_index else 0 for value_index in range(att_weights.shape[2])] for query_index in range(att_weights.shape[1])] for _ in range(att_weights.shape[0])]).cuda()
             att_weights *= causal_mask
-        att_weights = nn.Dropout()(att_weights) #TODO add causal masking here
-        att_output_multi_parts = torch.bmm(att_weights, v_multi_parts)
+        att_weights = nn.Dropout()(att_weights)
+        rel_pos_indices = torch.tensor([[[q_idx - k_idx for q_idx in range(query_length)] for k_idx in range(value_length)] for _ in range(FLAGS.nb_heads)])
+        rel_pos_indices += FLAGS.max_seq_length # Because torch.gather doesn't work with negative indices
+        a = [MultiHeadAttention.position_embedding.gather(1, rel_pos_indices[:, q_idx, :]).unsqueeze(-1) for q_idx in range(query_length)]
+        single_position_embeddings = torch.cat(a, 2)
+        batch_pos_embeddings = torch.cat([single_position_embeddings for _ in range(FLAGS.d_batch)], 0) #TODO check if this works, and if it's correct wrt batch dim, nb heads dim, ...
+        att_output_multi_parts = torch.bmm(att_weights + batch_pos_embeddings, v_multi_parts)
         att_output = att_output_multi_parts.contiguous().view(FLAGS.d_batch, query_length, FLAGS.d_hidden)
         return att_output
 

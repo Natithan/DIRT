@@ -3,6 +3,7 @@ from __future__ import unicode_literals, print_function
 
 import os
 import sys
+from functools import reduce
 from pathlib import Path
 from typing import Any, T_co
 
@@ -89,11 +90,14 @@ class GutenbergReader(DatasetReader):
     def _read(self, folder_path):
         for i, file in enumerate(os.scandir(folder_path)):
             if FLAGS.mini:
-                if i > 5:
+                if i > 0:
                     break
             with open(file) as f:
                 running_sequence = []
-                for line in f:
+                for j, line in enumerate(f):
+                    if FLAGS.mini:
+                        if j > 50:
+                            break
                     words = line.strip().split()
                     running_sequence += words
                     if len(running_sequence) >= FLAGS.max_seq_length:
@@ -101,9 +105,6 @@ class GutenbergReader(DatasetReader):
                         running_sequence = running_sequence[FLAGS.max_seq_length:]
                         yield self.text_to_instance([Token(word) for word in current_sequence])
 
-
-def f(prediction, targets): #TODO
-    pass
 
 
 class FullModel(Model):
@@ -118,6 +119,8 @@ class FullModel(Model):
         self.predictor = nn.Linear(FLAGS.d_hidden, self.vocab.get_vocab_size())
         self.loss = nn.CrossEntropyLoss()
 
+    def get_parameters_for_histogram_tensorboard_logging(self):
+        return [self.loss]
 
     def process_targets_for_loss(self, targets,max_target_seq_length):
         target_tokens = targets['tokens']
@@ -129,19 +132,18 @@ class FullModel(Model):
         return target_tokens_contiguous
 
     def forward(self, inputs, targets):
+        d_batch = inputs['tokens'].shape[0] # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
         max_target_seq_length = int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1) # Longest length if no adjacent masks
         targets = self.process_targets_for_loss(targets,max_target_seq_length)
         embedded_inputs = self.embedder(inputs['tokens'])
-        embedded_outputs = torch.rand(FLAGS.d_batch, max_target_seq_length,FLAGS.d_hidden).cuda()
+        embedded_outputs = torch.rand(d_batch, max_target_seq_length,FLAGS.d_hidden).cuda()
         encoded = self.encoder(nn.Dropout()(embedded_inputs))
         decoded,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded)
-        prediction_distribution = nn.Softmax()(self.predictor(nn.Dropout()(decoded)))
+        prediction_distribution = nn.Softmax()(self.predictor(nn.Dropout()(decoded))) #TODO add explicit dimension arg to softmax to avoid warning
         prediction_distribution_contiguous = prediction_distribution.contiguous().view(-1,self.vocab.get_vocab_size())
         prediction = prediction_distribution.max(-1)[1]
-        loss =  self.loss(prediction_distribution_contiguous,targets)
-        return {'loss':loss} # For AllenNLP trainer loop
-        # TODO add position embedding
-
+        loss =  self.loss(prediction_distribution_contiguous,targets) #TODO figure out why performance barely improving :P
+        return {'loss':loss} # For AllenNLP trainer loop #TODO figure out error during validation time
 
 
 
@@ -174,7 +176,7 @@ class MySequential(nn.Sequential):
         return inputs
 
 
-class DecoderBlock(nn.Module): # TODO
+class DecoderBlock(nn.Module):
     def __init__(self):
         super().__init__()
         self.self_attention = MultiHeadAttention(use_causal_mask=True)
@@ -186,14 +188,14 @@ class DecoderBlock(nn.Module): # TODO
     def forward(self, output, original_encoded_input):
         output = layer_normalize(output)
         self_att_out = layer_normalize(self.self_attention(query=output, values=output) + nn.Dropout()(output))  # Include skip-connection and layer normalization
-        att_out = layer_normalize(self.attention(query=self_att_out, values=original_encoded_input ))
+        att_out = layer_normalize(self.attention(query=self_att_out, values=original_encoded_input )) # TODO make sure values match in batch dimension
         ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout()(att_out))
         return ff_out, original_encoded_input
 
 class MultiHeadAttention(nn.Module):
     # relative position embedding with d_emb=1 (aka a scalar), shared across layers, but different between attention heads, in line with t5 paper
     # nb of possible relative positions ranges from - max_seq_length to + max_seq_length
-    position_embedding = torch.rand(FLAGS.nb_heads,FLAGS.max_seq_length*2)
+    position_embedding = torch.rand(FLAGS.nb_heads,FLAGS.max_seq_length*2).cuda()
 
     def __init__(self,use_causal_mask=False):
         super().__init__()
@@ -203,6 +205,7 @@ class MultiHeadAttention(nn.Module):
         self.use_causal_mask = use_causal_mask
 
     def forward(self, query,values):
+        d_batch = query.shape[0]
         q = self.project_q(query)
         k = self.project_k(values)
         v = self.project_v(values)
@@ -210,22 +213,37 @@ class MultiHeadAttention(nn.Module):
         d_head_hidden = FLAGS.d_hidden // FLAGS.nb_heads
         query_length = query.shape[1]
         value_length = values.shape[1]
-        q_multi_parts = q.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, query_length, d_head_hidden)
-        k_multi_parts = k.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, value_length, d_head_hidden)
-        v_multi_parts = v.contiguous().view(FLAGS.d_batch * FLAGS.nb_heads, value_length, d_head_hidden)
-        att_weights = torch.bmm(q_multi_parts, k_multi_parts.transpose(1, 2))
+        if (reduce(operator.mul,k.shape,1) == 1368) and (d_batch * FLAGS.nb_heads * value_length * d_head_hidden == 24 * 19 * 9):
+            print('stop')
+        # This reshaping slices the last dimension and stacks those slices along the first dimension
+        # In the resulting first dimension, first come all slices from the first batch, then from the second, and so on
+        # This is relevant for how to add the position embeddings: they are the same per batch, but not per slice
+        q_multi_parts = q.contiguous().view(d_batch * FLAGS.nb_heads, query_length, d_head_hidden)
+        k_multi_parts = k.contiguous().view(d_batch * FLAGS.nb_heads, value_length, d_head_hidden)
+        v_multi_parts = v.contiguous().view(d_batch * FLAGS.nb_heads, value_length, d_head_hidden)
+
+        att_weights = torch.bmm(q_multi_parts, k_multi_parts.transpose(1, 2)) # shape [d_batch x nb_heads, query_length, value_length]
+
         if self.use_causal_mask:
             causal_mask = torch.tensor([[[1 if value_index <= query_index else 0 for value_index in range(att_weights.shape[2])] for query_index in range(att_weights.shape[1])] for _ in range(att_weights.shape[0])]).cuda()
             att_weights *= causal_mask
+
         att_weights = nn.Dropout()(att_weights)
-        rel_pos_indices = torch.tensor([[[q_idx - k_idx for q_idx in range(query_length)] for k_idx in range(value_length)] for _ in range(FLAGS.nb_heads)])
-        rel_pos_indices += FLAGS.max_seq_length # Because torch.gather doesn't work with negative indices
-        a = [MultiHeadAttention.position_embedding.gather(1, rel_pos_indices[:, q_idx, :]).unsqueeze(-1) for q_idx in range(query_length)]
-        single_position_embeddings = torch.cat(a, 2)
-        batch_pos_embeddings = torch.cat([single_position_embeddings for _ in range(FLAGS.d_batch)], 0) #TODO check if this works, and if it's correct wrt batch dim, nb heads dim, ...
+        batch_pos_embeddings = self.select_pos_embeddings(query_length, value_length, d_batch)
         att_output_multi_parts = torch.bmm(att_weights + batch_pos_embeddings, v_multi_parts)
-        att_output = att_output_multi_parts.contiguous().view(FLAGS.d_batch, query_length, FLAGS.d_hidden)
+        att_output = att_output_multi_parts.contiguous().view(d_batch, query_length, FLAGS.d_hidden)
         return att_output
+
+    def select_pos_embeddings(self, query_length, value_length, d_batch):
+        rel_pos_indices = torch.tensor(
+            [[[q_idx - k_idx for k_idx in range(value_length)] for q_idx in range(query_length)] for _ in
+             range(FLAGS.nb_heads)]).cuda() # shape [nb_heads, query_length, value_length]
+        rel_pos_indices += FLAGS.max_seq_length  # Because torch.gather doesn't work with negative indices
+        single_pos_embeddings = torch.cat(
+            [MultiHeadAttention.position_embedding.gather(1, rel_pos_indices[:, q_idx, :]).unsqueeze(1) for q_idx in
+             range(query_length)], 1)
+        batch_pos_embeddings = torch.cat([single_pos_embeddings for _ in range(d_batch)], 0)
+        return batch_pos_embeddings
 
 
 class AlbertEmbedder(nn.Module):
@@ -266,11 +284,7 @@ def main(_):
                       patience=FLAGS.patience,
                       num_epochs=FLAGS.num_epochs,
                       cuda_device=cuda_device)
-    trainer.train()
-    input = torch.rand(FLAGS.d_batch, FLAGS.source_length, FLAGS.d_emb) #TODO maybe add L@ penalty to loss
-    output = EncoderBlock()(input)
-    # loss =
-    print(output)
+    trainer.train() #TODO maybe add L2 penalty to loss
 
 
 if __name__ == '__main__':

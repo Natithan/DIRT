@@ -1,6 +1,6 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
-
+from datetime import datetime
 import os
 import sys
 from functools import reduce
@@ -17,7 +17,7 @@ from allennlp.data import DatasetReader, Instance, Token, Vocabulary
 from allennlp.data.fields import TextField, SequenceLabelField
 from allennlp.data.token_indexers import SingleIdTokenIndexer
 import operator
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -26,7 +26,7 @@ import itertools
 
 from absl import app
 from absl import flags
-
+#TODO change dropout prob to 0.1 in line with t5
 # %% FLAGS
 FLAGS = flags.FLAGS
 flags.DEFINE_integer("d_batch", 3, "Batch size")
@@ -36,19 +36,21 @@ flags.DEFINE_integer("nb_heads", 8, "Number of attention heads")
 # flags.DEFINE_integer("target_length", 20, "Number of tokens in target sequence")
 flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")
 # flags.DEFINE_integer("source_length", 20, "Number of tokens in source sequence")
-flags.DEFINE_integer("max_seq_length", 20, "Maximum number of words to consider per batch")
+flags.DEFINE_integer("max_seq_length", 40, "Maximum number of words to consider per batch")
 flags.DEFINE_string("data_folder", "./data/Gutenberg", "Folder with train, val and test subfolders containing data")
-
+flags.DEFINE_string("model_folder", "./output", "Folder with trained models and tensorboard logs")
+flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"), "Folder with trained models and tensorboard logs")
 # Trainer flags
-flags.DEFINE_integer("patience", 10, "Number of epochs the validation metric can worsen before stopping training.")
+flags.DEFINE_integer("patience", 1000, "Number of epochs the validation metric can worsen before stopping training.")
 flags.DEFINE_integer("num_epochs", 1000, "Number of epochs to train for.")
 
 flags.DEFINE_bool("mini", True, "Whether to work with mini data/models for debugging purposes")
 
-flags.DEFINE_integer("nb_encoder_layers", 2, "Number of layers in the encoder.")
-flags.DEFINE_integer("nb_decoder_layers", 2, "Number of layers in the decoder.")
+flags.DEFINE_integer("nb_encoder_layers", 6, "Number of layers in the encoder.")
+flags.DEFINE_integer("nb_decoder_layers", 6, "Number of layers in the decoder.")
 flags.DEFINE_integer("nb_feedforward_layers", 2, "Number of layers in the feedforward subcomponents of the transformer.")
-FLAGS(sys.argv)
+if __name__ == '__main__':
+    FLAGS(sys.argv)
 # %%
 
 def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683
@@ -116,11 +118,9 @@ class FullModel(Model):
         self.embedder = AlbertEmbedder(vocab)
         self.encoder = nn.Sequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
         self.decoder = MySequential(*[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
-        self.predictor = nn.Linear(FLAGS.d_hidden, self.vocab.get_vocab_size())
+        self.predictor = nn.Linear(FLAGS.d_hidden, self.vocab.get_vocab_size()) #TODO maybe make a factorized ALBERT-like de-embedder as well?
         self.loss = nn.CrossEntropyLoss()
 
-    def get_parameters_for_histogram_tensorboard_logging(self):
-        return [self.loss]
 
     def process_targets_for_loss(self, targets,max_target_seq_length):
         target_tokens = targets['tokens']
@@ -139,7 +139,7 @@ class FullModel(Model):
         embedded_outputs = torch.rand(d_batch, max_target_seq_length,FLAGS.d_hidden).cuda()
         encoded = self.encoder(nn.Dropout()(embedded_inputs))
         decoded,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded)
-        prediction_distribution = nn.Softmax()(self.predictor(nn.Dropout()(decoded))) #TODO add explicit dimension arg to softmax to avoid warning
+        prediction_distribution = nn.Softmax(dim=-1)(self.predictor(nn.Dropout()(decoded)))
         prediction_distribution_contiguous = prediction_distribution.contiguous().view(-1,self.vocab.get_vocab_size())
         prediction = prediction_distribution.max(-1)[1]
         loss =  self.loss(prediction_distribution_contiguous,targets) #TODO figure out why performance barely improving :P
@@ -213,8 +213,7 @@ class MultiHeadAttention(nn.Module):
         d_head_hidden = FLAGS.d_hidden // FLAGS.nb_heads
         query_length = query.shape[1]
         value_length = values.shape[1]
-        if (reduce(operator.mul,k.shape,1) == 1368) and (d_batch * FLAGS.nb_heads * value_length * d_head_hidden == 24 * 19 * 9):
-            print('stop')
+
         # This reshaping slices the last dimension and stacks those slices along the first dimension
         # In the resulting first dimension, first come all slices from the first batch, then from the second, and so on
         # This is relevant for how to add the position embeddings: they are the same per batch, but not per slice
@@ -259,6 +258,8 @@ class AlbertEmbedder(nn.Module):
 
 
 def main(_):
+    if not os.path.exists(FLAGS.model_folder):
+        os.makedirs(FLAGS.model_folder)
     reader = GutenbergReader() #TODO add COPA task later
     train_dataset = reader.read(os.path.join(FLAGS.data_folder,'train'))
     test_dataset = reader.read(os.path.join(FLAGS.data_folder,'test'))
@@ -283,8 +284,9 @@ def main(_):
                       validation_dataset=val_dataset,
                       patience=FLAGS.patience,
                       num_epochs=FLAGS.num_epochs,
+                      serialization_dir=Path(FLAGS.model_folder,FLAGS.run_name),
                       cuda_device=cuda_device)
-    trainer.train() #TODO maybe add L2 penalty to loss
+    trainer.train()
 
 
 if __name__ == '__main__':

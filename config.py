@@ -3,11 +3,11 @@ from datetime import datetime
 
 from absl import flags
 #TODO change dropout prob to 0.1 in line with t5
-# %% FLAGS
+#%% FLAGS
 FLAGS = flags.FLAGS
-flags.DEFINE_integer("d_batch", 10, "Batch size")
-flags.DEFINE_integer("d_emb", 12, "Size of token encodings before contextualization")
-flags.DEFINE_integer("d_hidden", 72, "Size of token encodings in hidden layers (contextualized)")
+flags.DEFINE_integer("d_batch", 20, "Batch size")
+flags.DEFINE_integer("d_emb", 72, "Size of token encodings before contextualization")
+flags.DEFINE_integer("d_hidden", 512, "Size of token encodings in hidden layers (contextualized)")
 flags.DEFINE_integer("nb_heads", 8, "Number of attention heads")
 flags.DEFINE_integer("device_idx", 1, "GPU index. -1 for CPU")
 # flags.DEFINE_integer("target_length", 20, "Number of tokens in target sequence")
@@ -19,8 +19,8 @@ flags.DEFINE_string("model_folder", "./output", "Folder with trained models and 
 flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"), "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("mode","", "Flag to allow python console command line argument")
 # Trainer flags
-flags.DEFINE_integer("patience", 1000, "Number of epochs the validation metric can worsen before stopping training.")
-flags.DEFINE_integer("num_epochs", 1000, "Number of epochs to train for.")
+flags.DEFINE_integer("patience", 500, "Number of epochs the validation metric can worsen before stopping training.")
+flags.DEFINE_integer("num_epochs", 10000, "Number of epochs to train for.")
 
 flags.DEFINE_bool("mini", True, "Whether to work with mini data/models for debugging purposes")
 

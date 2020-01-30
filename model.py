@@ -1,10 +1,17 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 
+import itertools
+import random
+
+from allennlp.data import Token
 from allennlp.models import Model
 import torch
 import torch.nn as nn
 from config import FLAGS
+from constants import PADDING_TOKEN, MASKING_TOKEN, TO_BE_DELETED_TOKEN, EOS_TOKEN
+
+
 class FullModel(Model):
     def __init__(self,vocab):
         """
@@ -20,18 +27,18 @@ class FullModel(Model):
 
 
     def process_targets_for_loss(self, target_tokens,max_target_seq_length):
-        padding_index = self.vocab.get_token_index('@@PAD@@')
+        padding_index = self.vocab.get_token_index(PADDING_TOKEN)
         current_target_seq_length = target_tokens.shape[1]
         padder = nn.ConstantPad1d((0, max_target_seq_length - current_target_seq_length), padding_index)
         target_tokens_contiguous = padder(target_tokens).contiguous().view(-1)
 
         return target_tokens_contiguous
 
-    def forward(self, inputs, targets):
+    def forward(self, inputs, targets=None):
         input_tokens, target_tokens = inputs['tokens'], targets['tokens']
-        if len(input_tokens.shape) == 1: # Dealing with non-batched input in total way
-            input_tokens = input_tokens.unsqueeze(0)
-            target_tokens = target_tokens.unsqueeze(0)
+        # if len(input_tokens.shape) == 1: # Dealing with non-batched input in total way #TODO delete this
+        #     input_tokens = input_tokens.unsqueeze(0)
+        #     target_tokens = target_tokens.unsqueeze(0)
         d_batch = input_tokens.shape[0] # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
         max_target_seq_length = int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1) # Longest length if no adjacent masks
         targets = self.process_targets_for_loss(target_tokens,max_target_seq_length)
@@ -41,10 +48,16 @@ class FullModel(Model):
         decoded,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded)
         prediction_distribution = nn.Softmax(dim=-1)(self.predictor(nn.Dropout()(decoded)))
         prediction_distribution_contiguous = prediction_distribution.contiguous().view(-1,self.vocab.get_vocab_size())
-        prediction = prediction_distribution.max(-1)[1]
         loss =  self.loss(prediction_distribution_contiguous,targets)
-        return {'loss':loss} # For AllenNLP trainer loop
+        return {'loss':loss, 'prediction_distribution':prediction_distribution} # Dictionary format for AllenNLP trainer loop
 
+    def decode(self, output_dict):
+        '''
+        Overrides the AllenNLP decode method.
+        Returns an actual best guess, needed at inference time, based on the probability distribution produced by :forward:
+        '''
+        prediction = output_dict['prediction_distribution'].max(-1)[1]
+        return {'prediction':prediction}
 
 
 def layer_normalize(param):
@@ -155,3 +168,20 @@ class AlbertEmbedder(nn.Module):
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
     def forward(self, input):
         return self.embedding_to_hidden(self.embedding_matrix[input].cuda(FLAGS.device_idx))
+
+
+def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683
+    masked_indices = sorted(random.sample(range(len(tokens)),int(len(tokens)*FLAGS.masking_fraction)))
+
+    given = [t if (i not in masked_indices) else MASKING_TOKEN for i, t in enumerate(tokens)]
+    masked_given = [i for i, j in zip(given[1:], given[:-1]) if not (i == MASKING_TOKEN and i == j)]
+    mask_counter = itertools.count()
+    unique_masked_given = [Token(f'{i}_{next(mask_counter)}') if i == MASKING_TOKEN else i for i in masked_given]
+
+    target = [tokens[i] for i in masked_indices]
+    include_mask = [True] + [((i - j) != 1) for i, j in zip(masked_indices[1:], masked_indices[:-1])]
+    masks = [MASKING_TOKEN if x else TO_BE_DELETED_TOKEN for x in include_mask]
+    masked_target = [i for j in zip(masks, target) for i in j if i != TO_BE_DELETED_TOKEN]
+    mask_counter = itertools.count() #Restart count
+    unique_masked_target = [Token(f'{i}_{next(mask_counter)}') if i == MASKING_TOKEN else i for i in masked_target] + [Token(EOS_TOKEN)]
+    return unique_masked_given, unique_masked_target

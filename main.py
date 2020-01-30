@@ -4,82 +4,26 @@ import os
 from pathlib import Path
 from allennlp.data.iterators import BucketIterator
 from allennlp.training import Trainer
-from allennlp.data import DatasetReader, Instance, Token, Vocabulary
-from allennlp.data.fields import TextField
-from allennlp.data.token_indexers import SingleIdTokenIndexer
 import torch.optim as optim
-import random
-import itertools
+import pickle
 
 from absl import app
 from config import FLAGS
 
 from model import FullModel
+from text_input_pipeline import GutenbergReader
 
-def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683
-    masked_indices = sorted(random.sample(range(len(tokens)),int(len(tokens)*FLAGS.masking_fraction)))
-
-    given = [t if (i not in masked_indices) else '@@MASK@@' for i, t in enumerate(tokens)]
-    masked_given = [i for i, j in zip(given[1:], given[:-1]) if not (i == '@@MASK@@' and i == j)]
-    mask_counter = itertools.count()
-    unique_masked_given = [Token(f'{i}_{next(mask_counter)}') if i == '@@MASK@@' else i for i in masked_given]
-
-    target = [tokens[i] for i in masked_indices]
-    include_mask = [True] + [((i - j) != 1) for i, j in zip(masked_indices[1:], masked_indices[:-1])]
-    masks = ['@@MASK@@' if x else '@@TO_BE_DELETED@@' for x in include_mask]
-    masked_target = [i for j in zip(masks, target) for i in j if i != '@@TO_BE_DELETED@@']
-    mask_counter = itertools.count() #Restart count
-    unique_masked_target = [Token(f'{i}_{next(mask_counter)}') if i == '@@MASK@@' else i for i in masked_target] + [Token('@@MASK_EOS@@')]
-    return unique_masked_given, unique_masked_target
-
-
-class GutenbergReader(DatasetReader):
-
-    def __init__(self, token_indexers=None):
-        super().__init__(lazy=False)
-        self.token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
-
-    def text_to_instance(self, tokens, tags=None):
-        inputs, targets = t5_denoise_spans_objective(tokens)
-        input_field = TextField(inputs, self.token_indexers)
-        target_field = TextField(targets, self.token_indexers)
-        fields = {"inputs": input_field,
-                  "targets": target_field}
-
-        # if tags:
-        #     label_field = SequenceLabelField(labels=tags, sequence_field=sentence_field)
-        #     fields["labels"] = label_field
-
-        return Instance(fields)
-
-    def _read(self, folder_path):
-        for i, file in enumerate(os.scandir(folder_path)):
-            if FLAGS.mini:
-                if i > 0:
-                    break
-            with open(file) as f:
-                running_sequence = []
-                for j, line in enumerate(f):
-                    if FLAGS.mini:
-                        if j > 500:
-                            break
-                    words = line.strip().split()
-                    running_sequence += words
-                    if len(running_sequence) >= FLAGS.max_seq_length:
-                        current_sequence = running_sequence[:FLAGS.max_seq_length]
-                        running_sequence = running_sequence[FLAGS.max_seq_length:]
-                        yield self.text_to_instance([Token(word) for word in current_sequence])
 
 def main(_):
-    if not os.path.exists(FLAGS.model_folder):
-        os.makedirs(FLAGS.model_folder)
+    run_dir = Path(FLAGS.model_folder, FLAGS.run_name)
+    if not os.path.exists(run_dir):
+        os.makedirs(run_dir)
+    # Store configuration in same folder as logs and model
+    flagfile = Path(run_dir, 'flagfile.txt')
+    open(flagfile, "x")
+    FLAGS.append_flags_into_file(flagfile)
     reader = GutenbergReader() #TODO add COPA task later
-    train_dataset = reader.read(os.path.join(FLAGS.data_folder,'train'))
-    test_dataset = reader.read(os.path.join(FLAGS.data_folder,'test'))
-    val_dataset = reader.read(os.path.join(FLAGS.data_folder,'val')) #TODO add code to see examples of actual predictions
-
-    vocab = Vocabulary.from_instances(train_dataset + val_dataset)
-    vocab.add_token_to_namespace("@@PADDING@@")
+    train_dataset, test_dataset, val_dataset, vocab = (reader.get_data_dict()[key] for key in ('train','test','val','vocab'))
 
     model = FullModel(vocab)
     cuda_device = FLAGS.device_idx
@@ -90,7 +34,7 @@ def main(_):
     iterator = BucketIterator(batch_size=FLAGS.d_batch, sorting_keys=[("inputs", "num_tokens")])
     iterator.index_with(vocab)
 
-    trainer = Trainer(model=model,
+    trainer = Trainer(model=model, #TODO make sure I can pickup training from interrupted process without errors
                       optimizer=optimizer,
                       iterator=iterator,
                       train_dataset=train_dataset,

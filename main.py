@@ -20,9 +20,11 @@ def main(_):
         os.makedirs(run_dir)
     # Store configuration in same folder as logs and model
     flagfile = Path(run_dir, 'flagfile.txt')
+    if os.path.exists(flagfile):
+        os.remove(flagfile)
     open(flagfile, "x")
     FLAGS.append_flags_into_file(flagfile)
-    reader = GutenbergReader() #TODO add COPA task later
+    reader = GutenbergReader()
     train_dataset, test_dataset, val_dataset, vocab = (reader.get_data_dict()[key] for key in ('train','test','val','vocab'))
 
     model = FullModel(vocab)
@@ -31,7 +33,7 @@ def main(_):
 
     optimizer = optim.Adam(model.parameters())
 
-    iterator = BucketIterator(batch_size=FLAGS.d_batch, sorting_keys=[("inputs", "num_tokens")])
+    iterator = BucketIterator(batch_size=FLAGS.d_batch,sorting_keys=[('inputs','num_tokens')])
     iterator.index_with(vocab)
 
     trainer = Trainer(model=model, #TODO make sure I can pickup training from interrupted process without errors

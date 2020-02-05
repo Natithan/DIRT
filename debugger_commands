@@ -1,0 +1,2 @@
+prediction_distribution_df = pd.DataFrame(prediction_distribution_contiguous.cpu().detach().numpy())
+prediction_distribution_df.columns = words

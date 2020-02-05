@@ -6,7 +6,7 @@ from allennlp.data import Vocabulary, DatasetReader, Instance
 from allennlp.data.fields import TextField
 from allennlp.data.token_indexers import SingleIdTokenIndexer
 
-from constants import PADDING_TOKEN
+from constants import PADDING_TOKEN, DECODER_START_TOKEN
 from model import t5_denoise_spans_objective
 import os
 from config import FLAGS
@@ -19,17 +19,17 @@ class GutenbergReader(DatasetReader):
         self.token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
 
     def text_to_instance(self, tokens, tags=None):
-        # inputs, targets = t5_denoise_spans_objective(tokens) #TODO move creating of inputs and targets to model
-        # input_field = TextField(inputs, self.token_indexers)
-        # target_field = TextField(targets, self.token_indexers)
-        # fields = {"inputs": input_field,
-        #           "targets": target_field}
+        inputs, targets = t5_denoise_spans_objective(tokens)
+        input_field = TextField(inputs, self.token_indexers)
+        target_field = TextField(targets, self.token_indexers)
+        fields = {"inputs": input_field,
+                  "targets": target_field}
 
         # if tags:
         #     label_field = SequenceLabelField(labels=tags, sequence_field=sentence_field)
         #     fields["labels"] = label_field
 
-        return Instance({"tokens": TextField(tokens, self.token_indexers)})
+        return Instance(fields)
 
     def _read(self, folder_path):
         for i, file in enumerate(os.scandir(folder_path)):
@@ -51,7 +51,7 @@ class GutenbergReader(DatasetReader):
                                 continue
                             if nb_sequences > 4:
                                 break
-                        yield self.text_to_instance([Token(word) for word in current_sequence])
+                        yield self.text_to_instance([Token(word.decode("utf-8")) for word  in current_sequence])
 
     def _read_data_folders(self):
         train_dataset = self.read(os.path.join(FLAGS.data_folder,'train'))
@@ -59,6 +59,7 @@ class GutenbergReader(DatasetReader):
         val_dataset = self.read(os.path.join(FLAGS.data_folder,'val'))
         vocab = Vocabulary.from_instances(train_dataset + val_dataset) #TODO fix ValueError: Vocabulary tokens must be strings, or saving and loading will break.  Got b'the' (with type <class 'bytes'>)
         vocab.add_token_to_namespace(PADDING_TOKEN)
+        vocab.add_token_to_namespace(DECODER_START_TOKEN)
         return {"train":train_dataset,
                 "test":test_dataset,
                 "val":val_dataset,

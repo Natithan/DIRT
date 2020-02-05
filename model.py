@@ -8,6 +8,9 @@ from allennlp.data import Token
 from allennlp.models import Model
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
+
+import constants
 from config import FLAGS
 from constants import PADDING_TOKEN, MASKING_TOKEN, TO_BE_DELETED_TOKEN, EOS_TOKEN
 
@@ -21,7 +24,7 @@ class FullModel(Model):
         self.embedder = AlbertEmbedder(vocab)
         self.encoder = nn.Sequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
         self.decoder = MySequential(*[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
-        self.predictor = nn.Linear(FLAGS.d_hidden, self.vocab.get_vocab_size()) #TODO maybe make a factorized ALBERT-like de-embedder as well?
+        self.predictor = nn.Linear(FLAGS.d_hidden, self.vocab.get_vocab_size()) #TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights
         self.loss = nn.CrossEntropyLoss()
         
 
@@ -36,16 +39,21 @@ class FullModel(Model):
 
     def forward(self, inputs, targets=None):
         input_tokens, target_tokens = inputs['tokens'], targets['tokens']
-        # if len(input_tokens.shape) == 1: # Dealing with non-batched input in total way #TODO delete this
-        #     input_tokens = input_tokens.unsqueeze(0)
-        #     target_tokens = target_tokens.unsqueeze(0)
         d_batch = input_tokens.shape[0] # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
         max_target_seq_length = int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1) # Longest length if no adjacent masks
         targets = self.process_targets_for_loss(target_tokens,max_target_seq_length)
+
         embedded_inputs = self.embedder(input_tokens)
-        embedded_outputs = torch.rand(d_batch, max_target_seq_length,FLAGS.d_hidden).cuda(FLAGS.device_idx)
         encoded = self.encoder(nn.Dropout()(embedded_inputs))
-        decoded,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded)
+
+        output_tokens = [constants.DECODER_START_TOKEN] + [constants.PADDING_TOKEN for _ in range(max_target_seq_length - 1)]
+        embedded_outputs = self.embedder(torch.tensor([[self.vocab.get_token_index(token) for token in output_tokens] for _ in range(d_batch)]))
+
+        # Creating decoded sequence element by element, each time attending to preceding outputs from the decoder stack
+        decoded = torch.zeros(d_batch, max_target_seq_length,FLAGS.d_hidden)
+        for i in range(max_target_seq_length):
+            decoded_element,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded)
+            decoded[:,i] = decoded_element[:,i]
         prediction_distribution = nn.Softmax(dim=-1)(self.predictor(nn.Dropout()(decoded)))
         prediction_distribution_contiguous = prediction_distribution.contiguous().view(-1,self.vocab.get_vocab_size())
         loss =  self.loss(prediction_distribution_contiguous,targets)
@@ -70,7 +78,7 @@ def layer_normalize(param):
 class EncoderBlock(nn.Module):
     def __init__(self):
         super().__init__()
-        self.multihead_attention = MultiHeadAttention()
+        self.multihead_attention = MultiHeadAttention() #TODO add padding mask
         # Dropout after every feedforward layer
         self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout()) ])
 
@@ -80,6 +88,9 @@ class EncoderBlock(nn.Module):
         return ff_out
 
 class MySequential(nn.Sequential):
+    '''
+    Allows Sequential to pass on multiple in- and outputs
+    '''
     def forward(self, *inputs):
         for module in self._modules.values():
             if type(inputs) == tuple:
@@ -108,7 +119,7 @@ class DecoderBlock(nn.Module):
 class MultiHeadAttention(nn.Module):
     # relative position embedding with d_emb=1 (aka a scalar), shared across layers, but different between attention heads, in line with t5 paper
     # nb of possible relative positions ranges from - max_seq_length to + max_seq_length
-    position_embedding = torch.rand(FLAGS.nb_heads,FLAGS.max_seq_length*2).cuda(FLAGS.device_idx)
+    position_embedding = Variable(torch.rand(FLAGS.nb_heads,FLAGS.max_seq_length*2).cuda(FLAGS.device_idx),requires_grad=True)
 
     def __init__(self,use_causal_mask=False):
         super().__init__()
@@ -164,7 +175,7 @@ class AlbertEmbedder(nn.Module):
     """
     def __init__(self,vocab):
         super().__init__()
-        self.embedding_matrix = torch.rand(vocab.get_vocab_size('tokens'), FLAGS.d_emb)
+        self.embedding_matrix = Variable(torch.rand(vocab.get_vocab_size('tokens'), FLAGS.d_emb),requires_grad=True)
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
     def forward(self, input):
         return self.embedding_to_hidden(self.embedding_matrix[input].cuda(FLAGS.device_idx))
@@ -178,8 +189,7 @@ def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https:
     There is no switching with random words, ... ( “MASS-style” objective )
     Targets look like: [mask_0, *<first word that was masked, possibly multiple if contiguous>, mask_1, <same>, ... , mask_eos, padding, padding, ... >
     '''
-    #TODO maybe especially important to apply different mask every epoch? (if small text)
-    masked_indices = sorted(random.sample(range(len(tokens)),int(len(tokens)*FLAGS.masking_fraction))) #
+    masked_indices = sorted(random.sample(range(len(tokens)), int(len(tokens) * FLAGS.masking_fraction)))  #
 
     given = [t if (i not in masked_indices) else MASKING_TOKEN for i, t in enumerate(tokens)]
     masked_given = [i for i, j in zip(given[1:], given[:-1]) if not (i == MASKING_TOKEN and i == j)]
@@ -190,6 +200,7 @@ def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https:
     include_mask = [True] + [((i - j) != 1) for i, j in zip(masked_indices[1:], masked_indices[:-1])]
     masks = [MASKING_TOKEN if x else TO_BE_DELETED_TOKEN for x in include_mask]
     masked_target = [i for j in zip(masks, target) for i in j if i != TO_BE_DELETED_TOKEN]
-    mask_counter = itertools.count() #Restart count
-    unique_masked_target = [Token(f'{i}_{next(mask_counter)}') if i == MASKING_TOKEN else i for i in masked_target] + [Token(EOS_TOKEN)]
+    mask_counter = itertools.count()  # Restart count
+    unique_masked_target = [Token(f'{i}_{next(mask_counter)}') if i == MASKING_TOKEN else i for i in masked_target] + [
+        Token(EOS_TOKEN)]
     return unique_masked_given, unique_masked_target

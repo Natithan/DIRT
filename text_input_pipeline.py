@@ -19,24 +19,24 @@ class GutenbergReader(DatasetReader):
         self.token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
 
     def text_to_instance(self, tokens, tags=None):
-        inputs, targets = t5_denoise_spans_objective(tokens)
-        input_field = TextField(inputs, self.token_indexers)
-        target_field = TextField(targets, self.token_indexers)
-        fields = {"inputs": input_field,
-                  "targets": target_field}
+        # inputs, targets = t5_denoise_spans_objective(tokens) #TODO move creating of inputs and targets to model
+        # input_field = TextField(inputs, self.token_indexers)
+        # target_field = TextField(targets, self.token_indexers)
+        # fields = {"inputs": input_field,
+        #           "targets": target_field}
 
         # if tags:
         #     label_field = SequenceLabelField(labels=tags, sequence_field=sentence_field)
         #     fields["labels"] = label_field
 
-        return Instance(fields)
+        return Instance({"tokens": TextField(tokens, self.token_indexers)})
 
     def _read(self, folder_path):
         for i, file in enumerate(os.scandir(folder_path)):
             if FLAGS.mini:
                 if i > 0:
                     break
-            with open(file) as f:
+            with open(file,'rb') as f:
                 running_sequence = []
                 nb_sequences = 0
                 for j, line in enumerate(f):
@@ -57,7 +57,7 @@ class GutenbergReader(DatasetReader):
         train_dataset = self.read(os.path.join(FLAGS.data_folder,'train'))
         test_dataset = self.read(os.path.join(FLAGS.data_folder,'test'))
         val_dataset = self.read(os.path.join(FLAGS.data_folder,'val'))
-        vocab = Vocabulary.from_instances(train_dataset + val_dataset)
+        vocab = Vocabulary.from_instances(train_dataset + val_dataset) #TODO fix ValueError: Vocabulary tokens must be strings, or saving and loading will break.  Got b'the' (with type <class 'bytes'>)
         vocab.add_token_to_namespace(PADDING_TOKEN)
         return {"train":train_dataset,
                 "test":test_dataset,
@@ -72,8 +72,8 @@ class GutenbergReader(DatasetReader):
         blob_dir_path = Path('blobs')
         if not os.path.exists(blob_dir_path):
             os.mkdir(blob_dir_path)
-        maybe_mini = 'mini' if FLAGS.mini else ''
-        this_blob_path = Path(blob_dir_path,f'{self.__class__.__name__}_data_{maybe_mini}.pkl') # TODO for not mini: fix UnicodeDecodeError at iteration 1019414
+        maybe_mini = '_mini' if FLAGS.mini else ''
+        this_blob_path = Path(blob_dir_path,f'{self.__class__.__name__}_data{maybe_mini}.pkl')
 
         if os.path.exists(this_blob_path):
             with open(this_blob_path, 'rb') as f:

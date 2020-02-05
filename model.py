@@ -171,7 +171,15 @@ class AlbertEmbedder(nn.Module):
 
 
 def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683
-    masked_indices = sorted(random.sample(range(len(tokens)),int(len(tokens)*FLAGS.masking_fraction)))
+    '''
+    Produces inputs and targets.
+    Inputs correspond to the original tokens, with a certain fraction of tokens replaced by a MASK-token.
+    Contiguous tokens that happen to get masked get replaced by a single MASK token.
+    There is no switching with random words, ... ( “MASS-style” objective )
+    Targets look like: [mask_0, *<first word that was masked, possibly multiple if contiguous>, mask_1, <same>, ... , mask_eos, padding, padding, ... >
+    '''
+    #TODO maybe especially important to apply different mask every epoch? (if small text)
+    masked_indices = sorted(random.sample(range(len(tokens)),int(len(tokens)*FLAGS.masking_fraction))) #
 
     given = [t if (i not in masked_indices) else MASKING_TOKEN for i, t in enumerate(tokens)]
     masked_given = [i for i, j in zip(given[1:], given[:-1]) if not (i == MASKING_TOKEN and i == j)]

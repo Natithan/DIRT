@@ -52,7 +52,7 @@ class FullModel(Model):
         # Creating decoded sequence element by element, each time attending to preceding outputs from the decoder stack
         decoded = torch.zeros(d_batch, max_target_seq_length,FLAGS.d_hidden)
         for i in range(max_target_seq_length):
-            decoded_element,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded)
+            embedded_outputs,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded) #TODO figure out whether to, in each loop, give decoder output of decoded so far, and zeros else, as input, or pad elsewhere, ..
             decoded[:,i] = decoded_element[:,i]
         prediction_distribution = nn.Softmax(dim=-1)(self.predictor(nn.Dropout()(decoded)))
         prediction_distribution_contiguous = prediction_distribution.contiguous().view(-1,self.vocab.get_vocab_size())

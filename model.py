@@ -129,9 +129,9 @@ class MultiHeadAttention(nn.Module):
         self.project_v = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
         self.project_o = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden) # In line with og t5 code (although not obvious from paper): there for if different d_head_hidden than (FLAGS.d_hidden // FLAGS.nb_heads), here that's not supported atm
         self.use_causal_mask = use_causal_mask
-        self.relative_attention_bias = nn.Embedding(self.relative_attention_num_buckets, self.n_heads) #TODO finish adapting position embeddings to be bucketized
+        self.relative_attention_bias = nn.Embedding(FLAGS.relative_attention_num_buckets, FLAGS.nb_heads)
 
-    def forward(self, query,values):
+    def forward(self, query,values,padding_mask): # Padding mask to make sure we don't attend to padded positions
         d_batch = query.shape[0]
         q = self.project_q(query)
         k = self.project_k(values)
@@ -166,16 +166,14 @@ class MultiHeadAttention(nn.Module):
 
     def select_pos_embeddings(self, query_length, value_length, d_batch):
         rel_pos_indices = torch.tensor(
-            [[[q_idx - k_idx for k_idx in range(value_length)] for q_idx in range(query_length)] for _ in
-             range(FLAGS.nb_heads)]).cuda(FLAGS.device_idx) # shape [nb_heads, query_length, value_length]
-        rel_pos_indices += FLAGS.max_seq_length  # Because torch.gather doesn't work with negative indices
-        single_pos_embeddings = torch.cat(
-            [MultiHeadAttention.position_embedding.gather(1, rel_pos_indices[:, q_idx, :]).unsqueeze(1) for q_idx in
-             range(query_length)], 1)
-        batch_pos_embeddings = torch.cat([single_pos_embeddings for _ in range(d_batch)], 0)
+            [[q_idx - k_idx for k_idx in range(value_length)] for q_idx in range(query_length)])\
+            .cuda(FLAGS.device_idx) # shape [nb_heads, query_length, value_length]
+        bucket_idxs = MultiHeadAttention._relative_position_bucket(rel_pos_indices)
+        single_pos_embeddings = self.relative_attention_bias(bucket_idxs)
+        batch_pos_embeddings = single_pos_embeddings.repeat(1,1,d_batch).permute(2,0,1)
         return batch_pos_embeddings
 
-    #Copied from https://github.com/huggingface/transformers/blob/master/src/transformers/modeling_t5.py
+    # Adapted from https://github.com/huggingface/transformers/blob/master/src/transformers/modeling_t5.py
     # Allow for position embeddings to be able to deal with longer distances
     @staticmethod
     def _relative_position_bucket(relative_position, bidirectional=True, num_buckets=32, max_distance=128):
@@ -202,12 +200,12 @@ class MultiHeadAttention(nn.Module):
             a Tensor with the same shape as relative_position, containing int32
             values in the range [0, num_buckets)
         """
-        ret = 0
+        bucket_indices = 0
         n = -relative_position
         if bidirectional:
             num_buckets //= 2
             # This is so buckets for negative numbers start after the buckets for positive ones
-            ret += (n < 0).to(torch.long) * num_buckets  # mtf.to_int32(mtf.less(n, 0)) * num_buckets
+            bucket_indices += (n < 0).to(torch.long) * num_buckets  # mtf.to_int32(mtf.less(n, 0)) * num_buckets
             n = torch.abs(n)
         else:
             n = torch.max(n, torch.zeros_like(n))
@@ -225,8 +223,8 @@ class MultiHeadAttention(nn.Module):
         #This puts all values larger than max_distance in the bucket for biggest numbers
         val_if_large = torch.min(val_if_large, torch.full_like(val_if_large, num_buckets - 1))
 
-        ret += torch.where(is_small, n, val_if_large)
-        return ret
+        bucket_indices += torch.where(is_small, n, val_if_large)
+        return bucket_indices
 
 
 class AlbertEmbedder(nn.Module):

@@ -57,7 +57,7 @@ class GutenbergReader(DatasetReader):
         train_dataset = self.read(os.path.join(FLAGS.data_folder,'train'))
         test_dataset = self.read(os.path.join(FLAGS.data_folder,'test'))
         val_dataset = self.read(os.path.join(FLAGS.data_folder,'val'))
-        vocab = Vocabulary.from_instances(train_dataset + val_dataset) #TODO fix ValueError: Vocabulary tokens must be strings, or saving and loading will break.  Got b'the' (with type <class 'bytes'>)
+        vocab = Vocabulary.from_instances(train_dataset + val_dataset)
         vocab.add_token_to_namespace(PADDING_TOKEN)
         vocab.add_token_to_namespace(DECODER_START_TOKEN)
         return {"train":train_dataset,

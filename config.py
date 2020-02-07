@@ -4,7 +4,7 @@ from datetime import datetime
 from absl import flags
 #%% FLAGS
 from util import get_freer_gpu
-# TODO maybe make multiple configs?
+# TODO maybe make multiple configs? Or maybe keep model hyperparams in some config, and use FLAGS just for folder names etc
 FLAGS = flags.FLAGS
 flags.DEFINE_integer("d_batch", 20, "Batch size")
 flags.DEFINE_integer("d_emb", 72, "Size of token encodings before contextualization")
@@ -27,4 +27,6 @@ flags.DEFINE_bool("mini", False, "Whether to work with mini data/models for debu
 flags.DEFINE_integer("nb_encoder_layers", 6, "Number of layers in the encoder.")
 flags.DEFINE_integer("nb_decoder_layers", 6, "Number of layers in the decoder.")
 flags.DEFINE_integer("nb_feedforward_layers", 2, "Number of layers in the feedforward subcomponents of the transformer.")
+flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings.")
+
 FLAGS(sys.argv)

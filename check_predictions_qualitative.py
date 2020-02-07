@@ -12,8 +12,7 @@ from pathlib import Path
 from text_input_pipeline import GutenbergReader
 
 def main(_):
-
-    reader = GutenbergReader()  # TODO add COPA task later
+    reader = GutenbergReader()
     train_dataset, test_dataset, val_dataset, vocab = (reader.get_data_dict()[key] for key in ('train','test','val','vocab'))
     model = FullModel(vocab)
 

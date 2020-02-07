@@ -2,6 +2,7 @@
 from __future__ import unicode_literals, print_function
 
 import itertools
+import math
 import random
 
 from allennlp.data import Token
@@ -44,7 +45,7 @@ class FullModel(Model):
         targets = self.process_targets_for_loss(target_tokens,max_target_seq_length)
 
         embedded_inputs = self.embedder(input_tokens)
-        encoded = self.encoder(nn.Dropout()(embedded_inputs))
+        encoded = self.encoder(nn.Dropout(p=FLAGS.dropout_rate)(embedded_inputs))
 
         output_tokens = [constants.DECODER_START_TOKEN] + [constants.PADDING_TOKEN for _ in range(max_target_seq_length - 1)]
         embedded_outputs = self.embedder(torch.tensor([[self.vocab.get_token_index(token) for token in output_tokens] for _ in range(d_batch)]))
@@ -53,8 +54,8 @@ class FullModel(Model):
         decoded = torch.zeros(d_batch, max_target_seq_length,FLAGS.d_hidden)
         for i in range(max_target_seq_length):
             embedded_outputs,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded) #TODO figure out whether to, in each loop, give decoder output of decoded so far, and zeros else, as input, or pad elsewhere, ..
-            decoded[:,i] = decoded_element[:,i]
-        prediction_distribution = nn.Softmax(dim=-1)(self.predictor(nn.Dropout()(decoded)))
+            decoded[:,i] = decoded_element[:,i] #TODO maybe should do teacher forcing: give embedding of actual word: correct word at training, predicted word at inference time
+        prediction_distribution = nn.Softmax(dim=-1)(self.predictor(nn.Dropout(p=FLAGS.dropout_rate)(decoded)))
         prediction_distribution_contiguous = prediction_distribution.contiguous().view(-1,self.vocab.get_vocab_size())
         loss =  self.loss(prediction_distribution_contiguous,targets)
         return {'loss':loss, 'prediction_distribution':prediction_distribution} # Dictionary format for AllenNLP trainer loop
@@ -80,11 +81,11 @@ class EncoderBlock(nn.Module):
         super().__init__()
         self.multihead_attention = MultiHeadAttention() #TODO add padding mask
         # Dropout after every feedforward layer
-        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout()) ])
+        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout(p=FLAGS.dropout_rate)) ]) #TODO  The feed-forward networks in each block consist of a dense layer with an output dimensionality of dff = 3072 followed by a ReLU nonlinearity and another dense layer
 
     def forward(self, input):
-        att_out = layer_normalize(self.multihead_attention(input,input) + nn.Dropout()(input))  # Include skip-connection
-        ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout()(att_out))
+        att_out = layer_normalize(self.multihead_attention(input,input) + nn.Dropout(p=FLAGS.dropout_rate)(input))  # Include skip-connection
+        ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout(p=FLAGS.dropout_rate)(att_out))
         return ff_out
 
 class MySequential(nn.Sequential):
@@ -106,14 +107,14 @@ class DecoderBlock(nn.Module):
         self.self_attention = MultiHeadAttention(use_causal_mask=True)
         self.attention =  MultiHeadAttention()
         # Dropout after every feedforward layer
-        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout()) ])
+        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout(p=FLAGS.dropout_rate)) ])
 
 
     def forward(self, output, original_encoded_input):
         output = layer_normalize(output)
-        self_att_out = layer_normalize(self.self_attention(query=output, values=output) + nn.Dropout()(output))  # Include skip-connection and layer normalization
+        self_att_out = layer_normalize(self.self_attention(query=output, values=output) + nn.Dropout(p=FLAGS.dropout_rate)(output))  # Include skip-connection and layer normalization
         att_out = layer_normalize(self.attention(query=self_att_out, values=original_encoded_input ))
-        ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout()(att_out))
+        ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout(p=FLAGS.dropout_rate)(att_out))
         return ff_out, original_encoded_input
 
 class MultiHeadAttention(nn.Module):
@@ -126,7 +127,9 @@ class MultiHeadAttention(nn.Module):
         self.project_q = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
         self.project_k = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
         self.project_v = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
+        self.project_o = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden) # In line with og t5 code (although not obvious from paper): there for if different d_head_hidden than (FLAGS.d_hidden // FLAGS.nb_heads), here that's not supported atm
         self.use_causal_mask = use_causal_mask
+        self.relative_attention_bias = nn.Embedding(self.relative_attention_num_buckets, self.n_heads) #TODO finish adapting position embeddings to be bucketized
 
     def forward(self, query,values):
         d_batch = query.shape[0]
@@ -151,10 +154,14 @@ class MultiHeadAttention(nn.Module):
             causal_mask = torch.tensor([[[1 if value_index <= query_index else 0 for value_index in range(att_weights.shape[2])] for query_index in range(att_weights.shape[1])] for _ in range(att_weights.shape[0])]).cuda(FLAGS.device_idx)
             att_weights *= causal_mask
 
-        att_weights = nn.Dropout()(att_weights)
+
+        att_weights = nn.Softmax(dim=-1)(att_weights)
+        att_weights = nn.Dropout(p=FLAGS.dropout_rate)(att_weights)
+
         batch_pos_embeddings = self.select_pos_embeddings(query_length, value_length, d_batch)
         att_output_multi_parts = torch.bmm(att_weights + batch_pos_embeddings, v_multi_parts)
         att_output = att_output_multi_parts.contiguous().view(d_batch, query_length, FLAGS.d_hidden)
+        att_output = self.project_o(att_output)
         return att_output
 
     def select_pos_embeddings(self, query_length, value_length, d_batch):
@@ -168,6 +175,59 @@ class MultiHeadAttention(nn.Module):
         batch_pos_embeddings = torch.cat([single_pos_embeddings for _ in range(d_batch)], 0)
         return batch_pos_embeddings
 
+    #Copied from https://github.com/huggingface/transformers/blob/master/src/transformers/modeling_t5.py
+    # Allow for position embeddings to be able to deal with longer distances
+    @staticmethod
+    def _relative_position_bucket(relative_position, bidirectional=True, num_buckets=32, max_distance=128):
+        """
+        Adapted from Mesh Tensorflow:
+        https://github.com/tensorflow/mesh/blob/0cb87fe07da627bf0b7e60475d59f95ed6b5be3d/mesh_tensorflow/transformer/transformer_layers.py#L593
+
+        Translate relative position to a bucket number for relative attention.
+        The relative position is defined as memory_position - query_position, i.e.
+        the distance in tokens from the attending position to the attended-to
+        position.  If bidirectional=False, then positive relative positions are
+        invalid.
+        We use smaller buckets for small absolute relative_position and larger buckets
+        for larger absolute relative_positions.  All relative positions >=max_distance
+        map to the same bucket.  All relative positions <=-max_distance map to the
+        same bucket.  This should allow for more graceful generalization to longer
+        sequences than the model has been trained on.
+        Args:
+            relative_position: an int32 Tensor
+            bidirectional: a boolean - whether the attention is bidirectional
+            num_buckets: an integer
+            max_distance: an integer
+        Returns:
+            a Tensor with the same shape as relative_position, containing int32
+            values in the range [0, num_buckets)
+        """
+        ret = 0
+        n = -relative_position
+        if bidirectional:
+            num_buckets //= 2
+            # This is so buckets for negative numbers start after the buckets for positive ones
+            ret += (n < 0).to(torch.long) * num_buckets  # mtf.to_int32(mtf.less(n, 0)) * num_buckets
+            n = torch.abs(n)
+        else:
+            n = torch.max(n, torch.zeros_like(n))
+        # now n is in the range [0, inf)
+
+        # half of the buckets are for exact increments in positions
+        max_exact = num_buckets // 2
+        is_small = n < max_exact
+
+        # The other half of the buckets are for logarithmically bigger bins in positions up to max_distance
+        # This assigns bucket from larger numbers with an offset of max_exact, and then assigns numbers up to max_distance to the range max_exact - num buckets logarithmically
+        val_if_large = max_exact + (
+            torch.log(n.float() / max_exact) / math.log(max_distance / max_exact) * (num_buckets - max_exact)
+        ).to(torch.long)
+        #This puts all values larger than max_distance in the bucket for biggest numbers
+        val_if_large = torch.min(val_if_large, torch.full_like(val_if_large, num_buckets - 1))
+
+        ret += torch.where(is_small, n, val_if_large)
+        return ret
+
 
 class AlbertEmbedder(nn.Module):
     """
@@ -175,10 +235,12 @@ class AlbertEmbedder(nn.Module):
     """
     def __init__(self,vocab):
         super().__init__()
-        self.embedding_matrix = Variable(torch.rand(vocab.get_vocab_size('tokens'), FLAGS.d_emb),requires_grad=True)
+        self.idx_to_embedding = nn.Embedding(vocab.get_vocab_size('tokens'), FLAGS.d_emb)
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
-    def forward(self, input):
-        return self.embedding_to_hidden(self.embedding_matrix[input].cuda(FLAGS.device_idx))
+    def forward(self, idxs):
+        embedded = self.idx_to_embedding(idxs)
+        hidden = self.embedding_to_hidden(embedded)
+        return hidden
 
 
 def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683

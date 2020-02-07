@@ -2,20 +2,18 @@ import sys
 from datetime import datetime
 
 from absl import flags
-#TODO change dropout prob to 0.1 in line with t5
 #%% FLAGS
 from util import get_freer_gpu
-
+# TODO maybe make multiple configs?
 FLAGS = flags.FLAGS
 flags.DEFINE_integer("d_batch", 20, "Batch size")
 flags.DEFINE_integer("d_emb", 72, "Size of token encodings before contextualization")
-flags.DEFINE_integer("d_hidden", 512, "Size of token encodings in hidden layers (contextualized)")
+flags.DEFINE_integer("d_hidden", 768, "Size of token encodings in hidden layers (contextualized)")
 flags.DEFINE_integer("nb_heads", 8, "Number of attention heads")
 flags.DEFINE_integer("device_idx", get_freer_gpu(), "GPU index. -1 for CPU. Defaults to the GPU with most free memory")
-# flags.DEFINE_integer("target_length", 20, "Number of tokens in target sequence")
 flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")
-# flags.DEFINE_integer("source_length", 20, "Number of tokens in source sequence")
-flags.DEFINE_integer("max_seq_length", 40, "Maximum number of words to consider per batch")
+flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
+flags.DEFINE_integer("max_seq_length", 512, "Maximum number of words to consider per batch")
 flags.DEFINE_string("data_folder", "./data/Gutenberg", "Folder with train, val and test subfolders containing data")
 flags.DEFINE_string("model_folder", "./output", "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"), "Folder with trained models and tensorboard logs")

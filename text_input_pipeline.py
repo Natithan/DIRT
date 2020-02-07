@@ -6,7 +6,7 @@ from allennlp.data import Vocabulary, DatasetReader, Instance
 from allennlp.data.fields import TextField
 from allennlp.data.token_indexers import SingleIdTokenIndexer
 
-from constants import PADDING_TOKEN, DECODER_START_TOKEN
+from constants import DECODER_START_TOKEN
 from model import t5_denoise_spans_objective
 import os
 from config import FLAGS
@@ -58,7 +58,6 @@ class GutenbergReader(DatasetReader):
         test_dataset = self.read(os.path.join(FLAGS.data_folder,'test'))
         val_dataset = self.read(os.path.join(FLAGS.data_folder,'val'))
         vocab = Vocabulary.from_instances(train_dataset + val_dataset)
-        vocab.add_token_to_namespace(PADDING_TOKEN)
         vocab.add_token_to_namespace(DECODER_START_TOKEN)
         return {"train":train_dataset,
                 "test":test_dataset,

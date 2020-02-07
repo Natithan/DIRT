@@ -13,7 +13,7 @@ from torch.autograd import Variable
 
 import constants
 from config import FLAGS
-from constants import PADDING_TOKEN, MASKING_TOKEN, TO_BE_DELETED_TOKEN, EOS_TOKEN
+from constants import MASKING_TOKEN, TO_BE_DELETED_TOKEN, EOS_TOKEN
 
 
 class FullModel(Model):
@@ -23,7 +23,7 @@ class FullModel(Model):
         super().__init__(vocab)
         self.vocab = vocab
         self.embedder = AlbertEmbedder(vocab)
-        self.encoder = nn.Sequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
+        self.encoder = MySequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
         self.decoder = MySequential(*[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
         self.predictor = nn.Linear(FLAGS.d_hidden, self.vocab.get_vocab_size()) #TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights
         self.loss = nn.CrossEntropyLoss()
@@ -31,7 +31,7 @@ class FullModel(Model):
 
 
     def process_targets_for_loss(self, target_tokens,max_target_seq_length):
-        padding_index = self.vocab.get_token_index(PADDING_TOKEN)
+        padding_index = 0
         current_target_seq_length = target_tokens.shape[1]
         padder = nn.ConstantPad1d((0, max_target_seq_length - current_target_seq_length), padding_index)
         target_tokens_contiguous = padder(target_tokens).contiguous().view(-1)
@@ -44,10 +44,10 @@ class FullModel(Model):
         max_target_seq_length = int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1) # Longest length if no adjacent masks
         targets = self.process_targets_for_loss(target_tokens,max_target_seq_length)
 
-        embedded_inputs = self.embedder(input_tokens)
-        encoded = self.encoder(nn.Dropout(p=FLAGS.dropout_rate)(embedded_inputs))
+        embedded_inputs, padding_mask = self.embedder(input_tokens)
+        encoded = self.encoder(nn.Dropout(p=FLAGS.dropout_rate)(embedded_inputs), padding_mask)
 
-        output_tokens = [constants.DECODER_START_TOKEN] + [constants.PADDING_TOKEN for _ in range(max_target_seq_length - 1)]
+        output_tokens = [constants.DECODER_START_TOKEN] + ["VERY MUCH TODO ;)" for _ in range(max_target_seq_length - 1)] #TODO fix this
         embedded_outputs = self.embedder(torch.tensor([[self.vocab.get_token_index(token) for token in output_tokens] for _ in range(d_batch)]))
 
         # Creating decoded sequence element by element, each time attending to preceding outputs from the decoder stack
@@ -79,14 +79,14 @@ def layer_normalize(param):
 class EncoderBlock(nn.Module):
     def __init__(self):
         super().__init__()
-        self.multihead_attention = MultiHeadAttention() #TODO add padding mask
+        self.multihead_attention = MultiHeadAttention()
         # Dropout after every feedforward layer
         self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout(p=FLAGS.dropout_rate)) ]) #TODO  The feed-forward networks in each block consist of a dense layer with an output dimensionality of dff = 3072 followed by a ReLU nonlinearity and another dense layer
 
-    def forward(self, input):
-        att_out = layer_normalize(self.multihead_attention(input,input) + nn.Dropout(p=FLAGS.dropout_rate)(input))  # Include skip-connection
+    def forward(self, input, padding_mask):
+        att_out = layer_normalize(self.multihead_attention(input,input,padding_mask) + nn.Dropout(p=FLAGS.dropout_rate)(input))  # Include skip-connection
         ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout(p=FLAGS.dropout_rate)(att_out))
-        return ff_out
+        return ff_out, padding_mask
 
 class MySequential(nn.Sequential):
     '''
@@ -159,7 +159,11 @@ class MultiHeadAttention(nn.Module):
         att_weights = nn.Dropout(p=FLAGS.dropout_rate)(att_weights)
 
         batch_pos_embeddings = self.select_pos_embeddings(query_length, value_length, d_batch)
-        att_output_multi_parts = torch.bmm(att_weights + batch_pos_embeddings, v_multi_parts)
+        att_weights += batch_pos_embeddings
+        reshaped_padding_mask = padding_mask[:, None, :].repeat(1, query_length, FLAGS.nb_heads).view(-1, query_length, value_length)
+        att_weights *= reshaped_padding_mask
+
+        att_output_multi_parts = torch.bmm(att_weights, v_multi_parts)
         att_output = att_output_multi_parts.contiguous().view(d_batch, query_length, FLAGS.d_hidden)
         att_output = self.project_o(att_output)
         return att_output
@@ -233,12 +237,14 @@ class AlbertEmbedder(nn.Module):
     """
     def __init__(self,vocab):
         super().__init__()
+        self.vocab = vocab
         self.idx_to_embedding = nn.Embedding(vocab.get_vocab_size('tokens'), FLAGS.d_emb)
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
     def forward(self, idxs):
+        padding_mask = (idxs != 0)  # AllenNLP always puts padding token first in vocab
         embedded = self.idx_to_embedding(idxs)
         hidden = self.embedding_to_hidden(embedded)
-        return hidden
+        return hidden, padding_mask
 
 
 def t5_denoise_spans_objective(tokens): # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683

@@ -10,10 +10,10 @@ from allennlp.models import Model
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-
+from torch import tensor
 import constants
 from config import FLAGS
-from constants import MASKING_TOKEN, TO_BE_DELETED_TOKEN, EOS_TOKEN
+from constants import MASKING_TOKEN, TO_BE_DELETED_TOKEN, EOS_TOKEN, DECODER_START_TOKEN
 
 
 class FullModel(Model):
@@ -45,16 +45,22 @@ class FullModel(Model):
         targets = self.process_targets_for_loss(target_tokens,max_target_seq_length)
 
         embedded_inputs, padding_mask = self.embedder(input_tokens)
-        encoded = self.encoder(nn.Dropout(p=FLAGS.dropout_rate)(embedded_inputs), padding_mask)
+        encoded, _ = self.encoder(nn.Dropout(p=FLAGS.dropout_rate)(embedded_inputs), padding_mask)
 
-        output_tokens = [constants.DECODER_START_TOKEN] + ["VERY MUCH TODO ;)" for _ in range(max_target_seq_length - 1)] #TODO fix this
-        embedded_outputs = self.embedder(torch.tensor([[self.vocab.get_token_index(token) for token in output_tokens] for _ in range(d_batch)]))
+        if self.training:
+        # In training, we can parallelize decoding using a causal mask
+            shifted_target_tokens = torch.cat((tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]]*d_batch).to(FLAGS.device_idx),target_tokens),dim=1)
+            embedded_targets,_ = self.embedder(shifted_target_tokens)
+            decoded,_,_ = self.decoder(nn.Dropout()(embedded_targets),encoded, padding_mask)
+        else:
+            output_tokens = [DECODER_START_TOKEN] + ["VERY MUCH TODO ;)" for _ in range(max_target_seq_length - 1)] #TODO fix this
+            embedded_outputs = self.embedder(tensor([[self.vocab.get_token_index(token) for token in output_tokens] for _ in range(d_batch)]))
 
-        # Creating decoded sequence element by element, each time attending to preceding outputs from the decoder stack
-        decoded = torch.zeros(d_batch, max_target_seq_length,FLAGS.d_hidden)
-        for i in range(max_target_seq_length):
-            embedded_outputs,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded) #TODO figure out whether to, in each loop, give decoder output of decoded so far, and zeros else, as input, or pad elsewhere, ..
-            decoded[:,i] = decoded_element[:,i] #TODO maybe should do teacher forcing: give embedding of actual word: correct word at training, predicted word at inference time
+            # Creating decoded sequence element by element, each time attending to preceding outputs from the decoder stack
+            decoded = torch.zeros(d_batch, max_target_seq_length,FLAGS.d_hidden)
+            for i in range(max_target_seq_length):
+                embedded_outputs,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded) #TODO figure out whether to, in each loop, give decoder output of decoded so far, and zeros else, as input, or pad elsewhere, ..
+                decoded[:,i] = decoded_element[:,i] #TODO implement teacher forcing: give embedding of actual word: correct word at training, (beam search of) predicted word at inference time
         prediction_distribution = nn.Softmax(dim=-1)(self.predictor(nn.Dropout(p=FLAGS.dropout_rate)(decoded)))
         prediction_distribution_contiguous = prediction_distribution.contiguous().view(-1,self.vocab.get_vocab_size())
         loss =  self.loss(prediction_distribution_contiguous,targets)
@@ -110,12 +116,12 @@ class DecoderBlock(nn.Module):
         self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout(p=FLAGS.dropout_rate)) ])
 
 
-    def forward(self, output, original_encoded_input):
+    def forward(self, output, original_encoded_input, padding_mask):
         output = layer_normalize(output)
         self_att_out = layer_normalize(self.self_attention(query=output, values=output) + nn.Dropout(p=FLAGS.dropout_rate)(output))  # Include skip-connection and layer normalization
-        att_out = layer_normalize(self.attention(query=self_att_out, values=original_encoded_input ))
+        att_out = layer_normalize(self.attention(query=self_att_out, values=original_encoded_input,padding_mask=padding_mask))
         ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout(p=FLAGS.dropout_rate)(att_out))
-        return ff_out, original_encoded_input
+        return ff_out, original_encoded_input, padding_mask
 
 class MultiHeadAttention(nn.Module):
     # relative position embedding with d_emb=1 (aka a scalar), shared across layers, but different between attention heads, in line with t5 paper
@@ -131,7 +137,23 @@ class MultiHeadAttention(nn.Module):
         self.use_causal_mask = use_causal_mask
         self.relative_attention_bias = nn.Embedding(FLAGS.relative_attention_num_buckets, FLAGS.nb_heads)
 
-    def forward(self, query,values,padding_mask): # Padding mask to make sure we don't attend to padded positions
+    def get_attention_mask(self,padding_mask, d_batch, query_length, value_length):
+        """
+        Produces a mask that indicates which values not to pay attention to.
+        Combines a causal mask (if any) and a padding mask (if any)
+        """
+
+        if self.use_causal_mask:
+            causal_mask = tensor([[[0 if value_index <= query_index else -float('inf') for value_index in range(value_length)] for query_index in range(query_length)]]*(d_batch*FLAGS.nb_heads)).cuda(FLAGS.device_idx)
+        if padding_mask is None:
+            padding_mask = torch.zeros(d_batch,value_length).cuda(FLAGS.device_idx)
+        else:
+            padding_mask = torch.log(padding_mask.type(torch.float)) # Because we are masking before pushing through softmax: we need -inf to have ) after softmax, and 0 to have 1 after softmax
+        reshaped_padding_mask = padding_mask[:, None, :].repeat(1, query_length, FLAGS.nb_heads).view(-1, query_length, value_length)
+        attention_mask = reshaped_padding_mask + causal_mask if self.use_causal_mask else reshaped_padding_mask
+        return attention_mask # [d_batch*FLAGS.num_heads, query_length, value_length]
+
+    def forward(self, query,values,padding_mask=None): # Padding mask to make sure we don't attend to padded positions
         d_batch = query.shape[0]
         q = self.project_q(query)
         k = self.project_k(values)
@@ -150,26 +172,22 @@ class MultiHeadAttention(nn.Module):
 
         att_weights = torch.bmm(q_multi_parts, k_multi_parts.transpose(1, 2)) # shape [d_batch x nb_heads, query_length, value_length]
 
-        if self.use_causal_mask:
-            causal_mask = torch.tensor([[[1 if value_index <= query_index else 0 for value_index in range(att_weights.shape[2])] for query_index in range(att_weights.shape[1])] for _ in range(att_weights.shape[0])]).cuda(FLAGS.device_idx)
-            att_weights *= causal_mask
+        batch_pos_embeddings = self.select_pos_embeddings(query_length, value_length, d_batch)
+        att_weights += batch_pos_embeddings
 
+        attention_mask = self.get_attention_mask(padding_mask, d_batch, query_length, value_length)
+        att_weights *= attention_mask
 
         att_weights = nn.Softmax(dim=-1)(att_weights)
         att_weights = nn.Dropout(p=FLAGS.dropout_rate)(att_weights)
 
-        batch_pos_embeddings = self.select_pos_embeddings(query_length, value_length, d_batch)
-        att_weights += batch_pos_embeddings
-        reshaped_padding_mask = padding_mask[:, None, :].repeat(1, query_length, FLAGS.nb_heads).view(-1, query_length, value_length)
-        att_weights *= reshaped_padding_mask
-
-        att_output_multi_parts = torch.bmm(att_weights, v_multi_parts)
+        att_output_multi_parts = torch.bmm(att_weights, v_multi_parts) # [d_batch*num_heads,query_length, d_head_hidden] from [d_batch*num_heads, query_length, value_length] x [d_batch*num_heads,value_length, d_head_hidden]
         att_output = att_output_multi_parts.contiguous().view(d_batch, query_length, FLAGS.d_hidden)
         att_output = self.project_o(att_output)
         return att_output
 
     def select_pos_embeddings(self, query_length, value_length, d_batch):
-        rel_pos_indices = torch.tensor(
+        rel_pos_indices = tensor(
             [[q_idx - k_idx for k_idx in range(value_length)] for q_idx in range(query_length)])\
             .cuda(FLAGS.device_idx) # shape [nb_heads, query_length, value_length]
         bucket_idxs = MultiHeadAttention._relative_position_bucket(rel_pos_indices)

@@ -12,6 +12,13 @@ import os
 from config import FLAGS
 
 
+def add_custom_tokens(vocab):
+    """
+    Add extra tokens needed for the specific encoder-decoder model I am using
+    """
+    vocab.add_token_to_namespace(DECODER_START_TOKEN)
+
+
 class GutenbergReader(DatasetReader):
 
     def __init__(self, token_indexers=None):
@@ -58,7 +65,7 @@ class GutenbergReader(DatasetReader):
         test_dataset = self.read(os.path.join(FLAGS.data_folder,'test'))
         val_dataset = self.read(os.path.join(FLAGS.data_folder,'val'))
         vocab = Vocabulary.from_instances(train_dataset + val_dataset)
-        vocab.add_token_to_namespace(DECODER_START_TOKEN)
+        add_custom_tokens(vocab)
         return {"train":train_dataset,
                 "test":test_dataset,
                 "val":val_dataset,

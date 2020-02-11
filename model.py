@@ -30,7 +30,7 @@ class FullModel(Model):
         
 
 
-    def process_targets_for_loss(self, target_tokens,max_target_seq_length):
+    def process_targets_for_loss(self, target_tokens,max_target_seq_length): #TODO decide on way to compare decoded output with targets: up until target length without padding?
         padding_index = 0
         current_target_seq_length = target_tokens.shape[1]
         padder = nn.ConstantPad1d((0, max_target_seq_length - current_target_seq_length), padding_index)
@@ -39,6 +39,7 @@ class FullModel(Model):
         return target_tokens_contiguous
 
     def forward(self, inputs, targets=None):
+        result_dict = {}
         input_tokens, target_tokens = inputs['tokens'], targets['tokens']
         d_batch = input_tokens.shape[0] # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
         max_target_seq_length = int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1) # Longest length if no adjacent masks
@@ -49,9 +50,13 @@ class FullModel(Model):
 
         if self.training:
         # In training, we can parallelize decoding using a causal mask
-            shifted_target_tokens = torch.cat((tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]]*d_batch).to(FLAGS.device_idx),target_tokens),dim=1)
+            shifted_target_tokens = torch.cat((tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]]*d_batch).to(FLAGS.device_idx),target_tokens[:,:-1]),dim=1) # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
             embedded_targets,_ = self.embedder(shifted_target_tokens)
             decoded,_,_ = self.decoder(nn.Dropout()(embedded_targets),encoded, padding_mask)
+            prediction_distribution = nn.Softmax(dim=-1)(self.predictor(nn.Dropout(p=FLAGS.dropout_rate)(decoded)))
+            prediction_distribution_contiguous = prediction_distribution.contiguous().view(-1,self.vocab.get_vocab_size())
+            result_dict['loss'] = self.loss(prediction_distribution_contiguous,targets)
+            result_dict['prediction_distribution'] = prediction_distribution
         else:
             output_tokens = [DECODER_START_TOKEN] + ["VERY MUCH TODO ;)" for _ in range(max_target_seq_length - 1)] #TODO fix this
             embedded_outputs = self.embedder(tensor([[self.vocab.get_token_index(token) for token in output_tokens] for _ in range(d_batch)]))
@@ -61,10 +66,7 @@ class FullModel(Model):
             for i in range(max_target_seq_length):
                 embedded_outputs,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded) #TODO figure out whether to, in each loop, give decoder output of decoded so far, and zeros else, as input, or pad elsewhere, ..
                 decoded[:,i] = decoded_element[:,i] #TODO implement teacher forcing: give embedding of actual word: correct word at training, (beam search of) predicted word at inference time
-        prediction_distribution = nn.Softmax(dim=-1)(self.predictor(nn.Dropout(p=FLAGS.dropout_rate)(decoded)))
-        prediction_distribution_contiguous = prediction_distribution.contiguous().view(-1,self.vocab.get_vocab_size())
-        loss =  self.loss(prediction_distribution_contiguous,targets)
-        return {'loss':loss, 'prediction_distribution':prediction_distribution} # Dictionary format for AllenNLP trainer loop
+        return result_dict # Dictionary format for AllenNLP trainer loop
 
     def decode(self, output_dict):
         '''
@@ -176,7 +178,7 @@ class MultiHeadAttention(nn.Module):
         att_weights += batch_pos_embeddings
 
         attention_mask = self.get_attention_mask(padding_mask, d_batch, query_length, value_length)
-        att_weights *= attention_mask
+        att_weights += attention_mask
 
         att_weights = nn.Softmax(dim=-1)(att_weights)
         att_weights = nn.Dropout(p=FLAGS.dropout_rate)(att_weights)

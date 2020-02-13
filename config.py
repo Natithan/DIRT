@@ -28,5 +28,6 @@ flags.DEFINE_integer("nb_encoder_layers", 6, "Number of layers in the encoder.")
 flags.DEFINE_integer("nb_decoder_layers", 6, "Number of layers in the decoder.")
 flags.DEFINE_integer("nb_feedforward_layers", 2, "Number of layers in the feedforward subcomponents of the transformer.")
 flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings.")
+flags.DEFINE_integer("beam_width", 3, "Width of the beam during the decoding beam search phase.")
 
 FLAGS(sys.argv)

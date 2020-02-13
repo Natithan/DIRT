@@ -15,7 +15,6 @@ import constants
 from config import FLAGS
 from constants import MASKING_TOKEN, TO_BE_DELETED_TOKEN, EOS_TOKEN, DECODER_START_TOKEN
 
-
 class FullModel(Model):
     def __init__(self,vocab):
         """
@@ -38,33 +37,79 @@ class FullModel(Model):
 
         return target_tokens_contiguous
 
+    def decode_idxs_to_probabilities(self, decoder_input_token_idxs, encoded, padding_mask):
+        decoder_input_embeddings, _ = self.embedder(decoder_input_token_idxs)
+        decoded, _, _ = self.decoder(nn.Dropout()(decoder_input_embeddings), encoded, padding_mask)
+        vocab_probabilities = nn.Softmax(dim=-1)(self.predictor(MyDropout()(decoded)))
+        return vocab_probabilities
+
+
     def forward(self, inputs, targets=None):
         result_dict = {}
-        input_tokens, target_tokens = inputs['tokens'], targets['tokens']
+        input_tokens, target_tokens = inputs['tokens'], (targets['tokens'] if (targets is not None) else None)
         d_batch = input_tokens.shape[0] # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
-        max_target_seq_length = int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1) # Longest length if no adjacent masks
+        max_target_seq_length = int(FLAGS.max_seq_length*FLAGS.masking_fraction*2 + 1) if (target_tokens is None) else target_tokens.shape[-1]# Longest length if no adjacent masks
         targets = self.process_targets_for_loss(target_tokens,max_target_seq_length)
 
         embedded_inputs, padding_mask = self.embedder(input_tokens)
-        encoded, _ = self.encoder(nn.Dropout(p=FLAGS.dropout_rate)(embedded_inputs), padding_mask)
+        encoded, _ = self.encoder(MyDropout()(embedded_inputs), padding_mask)
 
         if self.training:
         # In training, we can parallelize decoding using a causal mask
             shifted_target_tokens = torch.cat((tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]]*d_batch).to(FLAGS.device_idx),target_tokens[:,:-1]),dim=1) # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
-            embedded_targets,_ = self.embedder(shifted_target_tokens)
-            decoded,_,_ = self.decoder(nn.Dropout()(embedded_targets),encoded, padding_mask)
-            prediction_distribution = nn.Softmax(dim=-1)(self.predictor(nn.Dropout(p=FLAGS.dropout_rate)(decoded)))
-            prediction_distribution_contiguous = prediction_distribution.contiguous().view(-1,self.vocab.get_vocab_size())
-            result_dict['loss'] = self.loss(prediction_distribution_contiguous,targets)
-            result_dict['prediction_distribution'] = prediction_distribution
+            vocab_probabilities = self.decode_idxs_to_probabilities(shifted_target_tokens,encoded,padding_mask)
+            vocab_probabilities_contiguous = vocab_probabilities.contiguous().view(-1,self.vocab.get_vocab_size())
+            result_dict['loss'] = self.loss(vocab_probabilities_contiguous,targets)
+            result_dict['vocab_probabilities'] = vocab_probabilities
         else:
-            output_tokens = [DECODER_START_TOKEN] + ["VERY MUCH TODO ;)" for _ in range(max_target_seq_length - 1)] #TODO fix this
-            embedded_outputs = self.embedder(tensor([[self.vocab.get_token_index(token) for token in output_tokens] for _ in range(d_batch)]))
+            k = FLAGS.beam_width
+            out_seq_length = max_target_seq_length + 1 # To allow start token in the output
+            output_idxs = torch.zeros(d_batch,max_target_seq_length + 1,k,dtype=torch.long).to(FLAGS.device_idx)
+            output_probs = torch.empty(d_batch,k,dtype=torch.long).to(FLAGS.device_idx)
+            output_idxs[:,0,:] = self.vocab.get_token_index(DECODER_START_TOKEN)
+            output_probs[:,:] = 1 #starting probability for product of probabilities along path
+            for i in range(max_target_seq_length):
+                # Stack candidate indices along batch dimension, so they can be processed in parallel
+                stacked_output_idxs = output_idxs.permute(0,2,1).reshape(d_batch * k, out_seq_length) # Stacks in batch dim as follows: [b1k1, b1k2, b2k1,b2k2, b3k1, b3k2] if d_batch = 3 and k = 2
+                stacked_encoded, stacked_padding_mask = encoded.repeat(k,1,1),padding_mask.repeat(k,1)
+                stacked_vocab_probs = self.decode_idxs_to_probabilities(stacked_output_idxs,stacked_encoded,stacked_padding_mask) # [d_batch*k (stacked as explained above), max_seq_length, vocab_size]
+                vocab_probs = stacked_vocab_probs.reshape(d_batch,k,out_seq_length,-1).permute(0,2,1,3)
+                current_vocab_probs = vocab_probs[:,i,:,:] # [d_batch, k, vocab_size]
+                k_prev = k_now = k # This purely for clarity
+                top_kk_probs, top_kk_idxs = torch.topk(current_vocab_probs,k=k_now, dim=-1) # [d_batch,k_prev (each previous index), k_now (top k indices for each previous index)]
+                top_kk_path_probs = top_kk_probs * output_probs[:,:,None].repeat(1,1,k_now)
+                top_k_path_probs, top_k_meta_idxs = torch.topk(top_kk_path_probs.reshape(d_batch,k*k),k=k,dim=-1)
+                top_k_path_probs /= top_k_path_probs.max(-1)[0][:,None].repeat(1,k) # Scaling path probabilities to avoid underflow. Scaling such that highest probability for each sample is 1
+                top_k_prev_meta_idxs = top_k_meta_idxs // k
+                top_k_now_idxs = torch.gather(top_kk_idxs.reshape(d_batch,k*k),-1,top_k_meta_idxs)
+                output_idxs = torch.gather(output_idxs,-1,top_k_prev_meta_idxs[:,None,:].repeat(1,out_seq_length,1)) # replace paths with paths that give the top probs now
+                output_idxs[:,i+1,:] = top_k_now_idxs
+                output_probs = top_k_path_probs #TODO check if this is correct all ;)
+            # output_idxs = output_idxs
+            #
+            #     for assumed_index in assumed_indices[:,-1]:
+            #         output_tokens[:, i] = assumed_index
+            #         embedded_outputs, _ = self.embedder(output_tokens)
+            #         decoded = self.decoder(MyDropout()(embedded_outputs), encoded, padding_mask)
+            #         vocab_probabilities = nn.Softmax(dim=-1)(self.predictor(MyDropout()(decoded))) # [d_batch, max_target_seq_length,d_vocab]
+            #         current_prediction = vocab_probabilities[i] # [d_batch,1,d_vocab]
+            #         top_k_probs_candidate, top_k_idxs_candidate = torch.topk(current_prediction,
+            #                                                                     k=k, dim=-1)
+            #         top_kxk_probs = torch.cat((top_kxk_probs, top_k_probs_candidate), dim=-1)
+            #         top_kxk_idxs = torch.cat((top_kxk_idxs, top_k_idxs_candidate), dim=-1)
+            #
+            #     top_kk_probs, meta_idxs = torch.topk(top_kxk_probs, dim=-1)
+            #     top_kk_idxs = top_kxk_idxs[meta_idxs]
+            #     output_idxs[:,i,:] = top_kk_idxs
+            #     output_probs[:,i,:] = top_kk_probs
+            result_dict['output_idxs'] = output_idxs[:-1]
+
+
 
             # Creating decoded sequence element by element, each time attending to preceding outputs from the decoder stack
             decoded = torch.zeros(d_batch, max_target_seq_length,FLAGS.d_hidden)
             for i in range(max_target_seq_length):
-                embedded_outputs,_ = self.decoder(nn.Dropout()(embedded_outputs),encoded) #TODO figure out whether to, in each loop, give decoder output of decoded so far, and zeros else, as input, or pad elsewhere, ..
+                embedded_outputs,_, _ = self.decoder(MyDropout()(embedded_outputs),encoded, padding_mask) #TODO figure out whether to, in each loop, give decoder output of decoded so far, and zeros else, as input, or pad elsewhere, ..
                 decoded[:,i] = decoded_element[:,i] #TODO implement teacher forcing: give embedding of actual word: correct word at training, (beam search of) predicted word at inference time
         return result_dict # Dictionary format for AllenNLP trainer loop
 
@@ -84,16 +129,22 @@ def layer_normalize(param):
     st_dev_expanded = st_dev.unsqueeze(-1).expand(*(mean.shape + (param.shape[-1],)))
     return (param - mean_expanded) / st_dev_expanded
 
+class MyDropout(nn.Dropout):
+    def __init__(self):
+        super().__init__()
+        self.p = FLAGS.dropout_rate
+
+
 class EncoderBlock(nn.Module):
     def __init__(self):
         super().__init__()
         self.multihead_attention = MultiHeadAttention()
         # Dropout after every feedforward layer
-        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout(p=FLAGS.dropout_rate)) ]) #TODO  The feed-forward networks in each block consist of a dense layer with an output dimensionality of dff = 3072 followed by a ReLU nonlinearity and another dense layer
+        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),MyDropout()) ]) #TODO  The feed-forward networks in each block consist of a dense layer with an output dimensionality of dff = 3072 followed by a ReLU nonlinearity and another dense layer
 
     def forward(self, input, padding_mask):
-        att_out = layer_normalize(self.multihead_attention(input,input,padding_mask) + nn.Dropout(p=FLAGS.dropout_rate)(input))  # Include skip-connection
-        ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout(p=FLAGS.dropout_rate)(att_out))
+        att_out = layer_normalize(self.multihead_attention(input,input,padding_mask) + MyDropout()(input))  # Include skip-connection
+        ff_out = layer_normalize(self.feedforward(att_out) + MyDropout()(att_out))
         return ff_out, padding_mask
 
 class MySequential(nn.Sequential):
@@ -115,14 +166,14 @@ class DecoderBlock(nn.Module):
         self.self_attention = MultiHeadAttention(use_causal_mask=True)
         self.attention =  MultiHeadAttention()
         # Dropout after every feedforward layer
-        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),nn.Dropout(p=FLAGS.dropout_rate)) ])
+        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),MyDropout()) ])
 
 
     def forward(self, output, original_encoded_input, padding_mask):
         output = layer_normalize(output)
-        self_att_out = layer_normalize(self.self_attention(query=output, values=output) + nn.Dropout(p=FLAGS.dropout_rate)(output))  # Include skip-connection and layer normalization
+        self_att_out = layer_normalize(self.self_attention(query=output, values=output) + MyDropout()(output))  # Include skip-connection and layer normalization
         att_out = layer_normalize(self.attention(query=self_att_out, values=original_encoded_input,padding_mask=padding_mask))
-        ff_out = layer_normalize(self.feedforward(att_out) + nn.Dropout(p=FLAGS.dropout_rate)(att_out))
+        ff_out = layer_normalize(self.feedforward(att_out) + MyDropout()(att_out))
         return ff_out, original_encoded_input, padding_mask
 
 class MultiHeadAttention(nn.Module):
@@ -132,6 +183,9 @@ class MultiHeadAttention(nn.Module):
 
     def __init__(self,use_causal_mask=False):
         super().__init__()
+        # Only one big projection matrix is used, instead of a small projection matrix per head.
+        # This is possible because in this implementation, the number of heads always needs to be a divisor of d_hidden
+        # If so, then the big matrix is the same as a concatenation of smaller, per-head matrices would be.
         self.project_q = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
         self.project_k = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
         self.project_v = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
@@ -181,7 +235,7 @@ class MultiHeadAttention(nn.Module):
         att_weights += attention_mask
 
         att_weights = nn.Softmax(dim=-1)(att_weights)
-        att_weights = nn.Dropout(p=FLAGS.dropout_rate)(att_weights)
+        att_weights = MyDropout()(att_weights)
 
         att_output_multi_parts = torch.bmm(att_weights, v_multi_parts) # [d_batch*num_heads,query_length, d_head_hidden] from [d_batch*num_heads, query_length, value_length] x [d_batch*num_heads,value_length, d_head_hidden]
         att_output = att_output_multi_parts.contiguous().view(d_batch, query_length, FLAGS.d_hidden)

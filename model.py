@@ -102,15 +102,9 @@ class FullModel(Model):
             #     top_kk_idxs = top_kxk_idxs[meta_idxs]
             #     output_idxs[:,i,:] = top_kk_idxs
             #     output_probs[:,i,:] = top_kk_probs
-            result_dict['output_idxs'] = output_idxs[:-1]
+            result_dict['output_idxs'] = output_idxs[:,1:,0] # Most probable always sorted at first position
 
 
-
-            # Creating decoded sequence element by element, each time attending to preceding outputs from the decoder stack
-            decoded = torch.zeros(d_batch, max_target_seq_length,FLAGS.d_hidden)
-            for i in range(max_target_seq_length):
-                embedded_outputs,_, _ = self.decoder(MyDropout()(embedded_outputs),encoded, padding_mask) #TODO figure out whether to, in each loop, give decoder output of decoded so far, and zeros else, as input, or pad elsewhere, ..
-                decoded[:,i] = decoded_element[:,i] #TODO implement teacher forcing: give embedding of actual word: correct word at training, (beam search of) predicted word at inference time
         return result_dict # Dictionary format for AllenNLP trainer loop
 
     def decode(self, output_dict):

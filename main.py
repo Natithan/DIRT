@@ -47,6 +47,8 @@ def main(_):
                       cuda_device=cuda_device)
     trainer.train()
 
+    model(test_dataset)
+
 
 if __name__ == '__main__':
     app.run(main)

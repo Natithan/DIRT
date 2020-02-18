@@ -1,33 +1,27 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 
-import itertools
 import math
-import random
 
-from allennlp.data import Token
 from allennlp.models import Model
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch import tensor
-import constants
 from config import FLAGS
-from constants import MASKING_TOKEN, TO_BE_DELETED_TOKEN, EOS_TOKEN, DECODER_START_TOKEN
+from constants import DECODER_START_TOKEN
 
 
 class FullModel(Model):
-    def __init__(self, vocab):
+    def __init__(self,do_teacher_forcing = True):
         """
         """
-        super().__init__(vocab)
-        self.vocab = vocab
-        self.embedder = AlbertEmbedder(vocab)
+        super().__init__()
+        self.embedder = AlbertEmbedder()
         self.encoder = MySequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
         self.decoder = MySequential(*[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
-        self.predictor = nn.Linear(FLAGS.d_hidden,
-                                   self.vocab.get_vocab_size())  # TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights
-        self.loss = nn.CrossEntropyLoss()
+        self.predictor = Predictor()
+        self.teacher_forcing = do_teacher_forcing
 
     def process_targets_for_loss(self, target_tokens,
                                  max_target_seq_length):  # TODO decide on way to compare decoded output with targets: up until target length without padding?
@@ -41,40 +35,51 @@ class FullModel(Model):
     def decode_idxs_to_probabilities(self, decoder_input_token_idxs, encoded, padding_mask):
         decoder_input_embeddings, _ = self.embedder(decoder_input_token_idxs)
         decoded, _, _ = self.decoder(nn.Dropout()(decoder_input_embeddings), encoded, padding_mask)
-        vocab_probabilities = nn.Softmax(dim=-1)(self.predictor(MyDropout()(decoded)))
+        vocab_probabilities = self.predictor(decoded)
         return vocab_probabilities
 
     def forward(self, inputs, targets=None):
         result_dict = {}
-        input_tokens, target_tokens = inputs['tokens'], (targets['tokens'] if (targets is not None) else None)
-        d_batch = input_tokens.shape[
+        input_ids, target_ids = inputs['tokens'], (targets['tokens'] if (targets is not None) else None)
+        d_batch = input_ids.shape[
             0]  # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
         max_target_seq_length = int(FLAGS.max_seq_length * FLAGS.masking_fraction * 2 + 1) if (
-                    target_tokens is None) else target_tokens.shape[-1]  # Longest length if no adjacent masks
-        targets = self.process_targets_for_loss(target_tokens, max_target_seq_length)
+                    target_ids is None) else target_ids.shape[-1]  # Longest length if no adjacent masks
+        targets = self.process_targets_for_loss(target_ids, max_target_seq_length)
 
-        embedded_inputs, padding_mask = self.embedder(input_tokens)
+        # ENCODING
+        embedded_inputs, padding_mask = self.embedder(input_ids)
         encoded, _ = self.encoder(MyDropout()(embedded_inputs), padding_mask)
 
-        if (targets is not None) and (self.teacher_forcing):
-            # In training, we can parallelize decoding using a causal mask
-            shifted_target_tokens = torch.cat((tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]] * d_batch).to(
-                FLAGS.device_idx), target_tokens[:, :-1]),
-                                              dim=1)  # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
-            vocab_probabilities = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded, padding_mask)
-            vocab_probabilities_contiguous = vocab_probabilities.contiguous().view(-1, self.vocab.get_vocab_size())
-            result_dict['loss'] = self.loss(vocab_probabilities_contiguous, targets)
-            result_dict['vocab_probabilities'] = vocab_probabilities
+        # DECODING
+        if FLAGS.use_decoder: #TODO maybe add some assert that checks if targets (if any) are in the correct format
+            if self.teacher_forcing:
+                # With teacher forcing, we can parallelize decoding using a causal mask
+                shifted_target_tokens = torch.cat(
+                    (tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]] * d_batch).to(FLAGS.device_idx), #TODO change this to not use self.vocab, but directly an id
+                     target_ids[:, :-1]),
+                    dim=1)  # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
+                vocab_probabilities = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded, padding_mask)
+                _, output_idxs = torch.max(vocab_probabilities,dim=-1)
+            else:
+                vocab_probabilities, output_idxs = self.beam_decode(d_batch, encoded, max_target_seq_length, padding_mask)
+                result_dict['output_idxs'] = output_idxs
         else:
-            result_dict['output_idxs'] = self.beam_decode(d_batch, encoded, max_target_seq_length, padding_mask)
+            vocab_probabilities = self.predictor(encoded) #TODO finish setting up encoder-only baseline
+            _, output_idxs = torch.max(vocab_probabilities,dim=-1)
+
+        if targets is not None:
+            vocab_probabilities_contiguous = vocab_probabilities.contiguous().view(-1, FLAGS.max_vocab_size)
+            result_dict['loss'] = nn.CrossEntropyLoss()(vocab_probabilities_contiguous, targets)
+        result_dict['output_idxs'] = output_idxs
 
         return result_dict  # Dictionary format for AllenNLP trainer loop
 
-    def beam_decode(self, d_batch, encoded, max_target_seq_length, padding_mask):
+    def beam_decode(self, d_batch, encoded, max_target_seq_length, padding_mask): #TODO make it so that this also outputs vocab probabilities, to allow training without teacher forcing
         k = FLAGS.beam_width
         out_seq_length = max_target_seq_length + 1  # To allow start token in the output
-        output_idxs = torch.zeros(d_batch, max_target_seq_length + 1, k, dtype=torch.long).to(FLAGS.device_idx)
-        output_idxs[:, 0, :] = self.vocab.get_token_index(DECODER_START_TOKEN)
+        output_idxs = torch.zeros(d_batch, out_seq_length, k, dtype=torch.long).to(FLAGS.device_idx)
+        output_idxs[:, 0, :] = self.vocab.get_token_index(DECODER_START_TOKEN) #TODO change this to not use self.vocab, but directly an id
         output_probs = torch.ones(d_batch, k, dtype=torch.long).to(
             FLAGS.device_idx)  # starting probability for product of probabilities along path
         for i in range(max_target_seq_length):  # TODO this takes pretty long :P find fix?
@@ -88,7 +93,7 @@ class FullModel(Model):
                                                                     stacked_padding_mask)  # [d_batch*k (stacked as explained above), max_seq_length, vocab_size]
 
             # Unstack and get result for current sequence element
-            vocab_probs = stacked_vocab_probs.reshape(d_batch, k, out_seq_length, -1).permute(0, 2, 1, 3)
+            vocab_probs = stacked_vocab_probs.reshape(d_batch, k, out_seq_length, -1).permute(0, 2, 1, 3) # [d_batch, out_seq_length, k, vocab_size]
             current_vocab_probs = vocab_probs[:, i, :, :]  # [d_batch, k, vocab_size]
 
             # Get the top k probabilities of each word in the vocab for each of the k current top paths in beam search
@@ -105,7 +110,10 @@ class FullModel(Model):
             top_k_now_idxs = torch.gather(top_kk_idxs.reshape(d_batch, k * k), -1, top_k_meta_idxs)
             output_idxs = torch.gather(output_idxs, -1, top_k_prev_meta_idxs[:, None, :].repeat(1, out_seq_length,
                                                                                                 1))  # replace paths with paths that give the top probs now
+            output_vocab_probs = torch.gather(output_vocab_probs, -1, top_k_prev_meta_idxs[:, None, :].repeat(1, out_seq_length,
+                                                                                                1))
             output_idxs[:, i + 1, :] = top_k_now_idxs
+            output_vocab_probs[:, i + 1, :] = current_vocab_probs
             output_probs = top_k_path_probs
         return output_idxs[:, 1:, 0]
 
@@ -125,11 +133,38 @@ def layer_normalize(param):
     st_dev_expanded = st_dev.unsqueeze(-1).expand(*(mean.shape + (param.shape[-1],)))
     return (param - mean_expanded) / st_dev_expanded
 
+class Predictor(nn.Module):
+    """
+    Outputs a probability distribution over the vocabulary given a sequence of hidden states
+    """
+    def __init__(self):
+        super().__init__()
+        self.ffn = nn.Linear(FLAGS.d_hidden,FLAGS.max_vocab_size)
+    def forward(self,hidden_states):
+        return nn.Softmax(dim=-1)(
+            self.ffn(
+                MyDropout()(hidden_states)
+            )
+        ) # TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights with output_embeddings.weight = input_embeddings.weight
+
 
 class MyDropout(nn.Dropout):
     def __init__(self):
         super().__init__()
         self.p = FLAGS.dropout_rate
+
+class FeedForwardBlock(nn.Module):
+    """
+    Feedforward block that is in every transformer block, as specified by t5 paper
+    """
+    def __init__(self):
+        super().__init__()
+        self.linear_in = nn.Linear(FLAGS.d_hidden, FLAGS.d_ff)
+        self.activation = nn.ReLU()
+        self.linear_out = nn.Linear(FLAGS.d_ff, FLAGS.d_hidden)
+
+    def forward(self, hidden_in):
+        return MyDropout()(self.linear_out(self.activation(self.linear_in(hidden_in))))
 
 
 class EncoderBlock(nn.Module):
@@ -137,9 +172,7 @@ class EncoderBlock(nn.Module):
         super().__init__()
         self.multihead_attention = MultiHeadAttention()
         # Dropout after every feedforward layer
-        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in (
-        nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden),
-        MyDropout())])  # TODO  The feed-forward networks in each block consist of a dense layer with an output dimensionality of dff = 3072 followed by a ReLU nonlinearity and another dense layer
+        self.feedforward = FeedForwardBlock()
 
     def forward(self, input, padding_mask):
         att_out = layer_normalize(
@@ -168,8 +201,7 @@ class DecoderBlock(nn.Module):
         self.self_attention = MultiHeadAttention(use_causal_mask=True)
         self.attention = MultiHeadAttention()
         # Dropout after every feedforward layer
-        self.feedforward = nn.Sequential(*[layer for _ in range(FLAGS.nb_feedforward_layers) for layer in
-                                           (nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden), MyDropout())])
+        self.feedforward = FeedForwardBlock()
 
     def forward(self, output, original_encoded_input, padding_mask):
         output = layer_normalize(output)
@@ -182,10 +214,6 @@ class DecoderBlock(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    # relative position embedding with d_emb=1 (aka a scalar), shared across layers, but different between attention heads, in line with t5 paper
-    # nb of possible relative positions ranges from - max_seq_length to + max_seq_length
-    position_embedding = Variable(torch.rand(FLAGS.nb_heads, FLAGS.max_seq_length * 2).cuda(FLAGS.device_idx),
-                                  requires_grad=True)
 
     def __init__(self, use_causal_mask=False):
         super().__init__()
@@ -324,10 +352,9 @@ class AlbertEmbedder(nn.Module):
     Factorized embedder, as proposed in the ALBERT paper: http://arxiv.org/abs/1909.11942
     """
 
-    def __init__(self, vocab):
+    def __init__(self):
         super().__init__()
-        self.vocab = vocab
-        self.idx_to_embedding = nn.Embedding(vocab.get_vocab_size('tokens'), FLAGS.d_emb)
+        self.idx_to_embedding = nn.Embedding(FLAGS.max_vocab_size, FLAGS.d_emb)
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
 
     def forward(self, idxs):
@@ -337,26 +364,3 @@ class AlbertEmbedder(nn.Module):
         return hidden, padding_mask
 
 
-def t5_denoise_spans_objective(tokens):  # Based on objective in t5 paper: https://arxiv.org/abs/1910.10683
-    '''
-    Produces inputs and targets.
-    Inputs correspond to the original tokens, with a certain fraction of tokens replaced by a MASK-token.
-    Contiguous tokens that happen to get masked get replaced by a single MASK token.
-    There is no switching with random words, ... ( “MASS-style” objective )
-    Targets look like: [mask_0, *<first word that was masked, possibly multiple if contiguous>, mask_1, <same>, ... , mask_eos, padding, padding, ... >
-    '''
-    masked_indices = sorted(random.sample(range(len(tokens)), int(len(tokens) * FLAGS.masking_fraction)))  #
-
-    given = [t if (i not in masked_indices) else MASKING_TOKEN for i, t in enumerate(tokens)]
-    masked_given = [i for i, j in zip(given[1:], given[:-1]) if not (i == MASKING_TOKEN and i == j)]
-    mask_counter = itertools.count()
-    unique_masked_given = [Token(f'{i}_{next(mask_counter)}') if i == MASKING_TOKEN else i for i in masked_given]
-
-    target = [tokens[i] for i in masked_indices]
-    include_mask = [True] + [((i - j) != 1) for i, j in zip(masked_indices[1:], masked_indices[:-1])]
-    masks = [MASKING_TOKEN if x else TO_BE_DELETED_TOKEN for x in include_mask]
-    masked_target = [i for j in zip(masks, target) for i in j if i != TO_BE_DELETED_TOKEN]
-    mask_counter = itertools.count()  # Restart count
-    unique_masked_target = [Token(f'{i}_{next(mask_counter)}') if i == MASKING_TOKEN else i for i in masked_target] + [
-        Token(EOS_TOKEN)]
-    return unique_masked_given, unique_masked_target

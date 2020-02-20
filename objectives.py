@@ -32,7 +32,7 @@ def t5_denoise_spans_objective(tokens):  # Based on objective in t5 paper: https
     return unique_masked_given, unique_masked_target
 
 
-def BERT_MLM_objective(tokens):
+def BERT_MLM_objective(tokens): #TODO maybe add dynamic masking? I.e. at every entrance to the model
     '''
     Produces inputs and targets.
     Inputs correspond to the original tokens, with a certain fraction of tokens replaced by a MASK-token.
@@ -46,3 +46,8 @@ def BERT_MLM_objective(tokens):
     inputs = [t if (i not in masked_indices) else Token(MASKING_TOKEN) for i, t in enumerate(tokens)]
     targets = [t for t in tokens]
     return inputs, targets
+    #TODO FINISH THIS HERE BELOW
+    bpe_mask_token = self.token_indexers['ids'].byte_pair_encode(Token(MASKING_TOKEN))[0]
+    masking_id = vocab.get_token_index(bpe_mask_token,'openai_transformer')
+    input_ids = instance.as_tensor_dict()['inputs']['ids']
+    masked_input_ids = torch.where(torch.rand_like(input_ids) < FLAGS.masking_fraction, input_ids, masking_id * torch.ones_like(input_ids).to(torch.int32))

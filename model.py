@@ -40,7 +40,7 @@ class FullModel(Model):
 
     def forward(self, inputs, targets=None):
         result_dict = {}
-        input_ids, target_ids = inputs['tokens'], (targets['tokens'] if (targets is not None) else None)
+        input_ids, target_ids = inputs['ids'], (targets['ids'] if (targets is not None) else None)
         d_batch = input_ids.shape[
             0]  # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
         max_target_seq_length = int(FLAGS.max_seq_length * FLAGS.masking_fraction * 2 + 1) if (

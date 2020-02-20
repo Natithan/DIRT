@@ -5,7 +5,6 @@ import sys
 from datetime import datetime
 from absl import flags
 # %% FLAGS
-from maybewrapper import RobertaMLMWrapper
 from util import get_freer_gpu #TODO maybe make config classes like in huggingface?
 logger = logging.getLogger(__name__)
 
@@ -78,6 +77,14 @@ FLAGS(sys.argv)
 from model import FullModel
 from transformers import RobertaForMaskedLM
 
+# Maps from my name for models to huggingface shortcut names
+CONFIG_MAPPING = OrderedDict(
+    [
+        ("huggingface_baseline_encoder", "roberta-base",),
+    ]
+)
+
+from wrappers import RobertaMLMWrapper
 MODEL_MAPPING = OrderedDict(
     [
         ("huggingface_baseline_encoder", RobertaMLMWrapper,),
@@ -93,9 +100,3 @@ OBJECTIVE_MAPPING = OrderedDict(
     ]
 )
 
-# Maps from my name for models to huggingface shortcut names
-CONFIG_MAPPING = OrderedDict(
-    [
-        ("huggingface_baseline_encoder", "roberta-base",),
-    ]
-)

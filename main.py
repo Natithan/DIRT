@@ -1,6 +1,9 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 import os
+
+os.environ['TORCH_HOME'] = os.path.join('/cw', 'working-arwen', 'nathan')
+os.environ['ALLENNLP_CACHE_ROOT'] = os.path.join('/cw', 'working-arwen', 'nathan')
 from pathlib import Path
 from allennlp.data.iterators import BucketIterator
 from allennlp.training import Trainer
@@ -14,7 +17,6 @@ from model import FullModel
 from text_input_pipeline import GutenbergReader
 
 
-
 def main(_):
     run_dir = Path(FLAGS.model_folder, FLAGS.model, FLAGS.run_name)
     if not os.path.exists(run_dir):
@@ -26,36 +28,29 @@ def main(_):
     open(flagfile, "x")
     FLAGS.append_flags_into_file(flagfile)
     reader = GutenbergReader()
-    train_dataset, test_dataset, val_dataset, vocab = (reader.get_data_dict()[key] for key in ('train','test','val','vocab'))
-    model = MODEL_MAPPING[FLAGS.model]()
+    train_dataset, test_dataset, val_dataset, vocab = (reader.get_data_dict()[key] for key in
+                                                       ('train', 'test', 'val', 'vocab'))
+    model = MODEL_MAPPING[FLAGS.model](vocab)
     cuda_device = FLAGS.device_idx
     model = model.cuda(cuda_device)
 
     optimizer = optim.Adam(model.parameters())
 
-    iterator = BucketIterator(batch_size=FLAGS.d_batch,sorting_keys=[('inputs','num_tokens')])
+    iterator = BucketIterator(batch_size=FLAGS.d_batch, sorting_keys=[('inputs', 'num_tokens')])
     iterator.index_with(vocab)
-    trainer = Trainer(model=model, #TODO make sure I can pickup training from interrupted process without errors
+    trainer = Trainer(model=model,  # TODO make sure I can pickup training from interrupted process without errors
                       optimizer=optimizer,
                       iterator=iterator,
                       train_dataset=train_dataset,
                       validation_dataset=val_dataset,
                       patience=FLAGS.patience,
                       num_epochs=FLAGS.num_epochs,
-                      serialization_dir=Path(FLAGS.model_folder,FLAGS.run_name),
+                      serialization_dir=Path(FLAGS.model_folder, FLAGS.run_name),
                       cuda_device=cuda_device)
     trainer.train()
 
     model(test_dataset)
 
-def initialize_model():
-    config_path = CONFIG_MAPPING[FLAGS.model]
-    model_class = MODEL_MAPPING[FLAGS.model]
-    config, model_kwargs = model_class.config_class.from_pretrained(
-        config_path
-    )
-    model = model_class(config, **model_kwargs)
-    return model
 
 if __name__ == '__main__':
     app.run(main)

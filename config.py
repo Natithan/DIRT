@@ -74,21 +74,11 @@ FLAGS(sys.argv)
 #                 logger.error("Can't set {} with value {} for {}".format(key, value, self))
 #                 raise err
 # String-to-object mappings
-from model import FullModel
-from transformers import RobertaForMaskedLM
 
 # Maps from my name for models to huggingface shortcut names
 CONFIG_MAPPING = OrderedDict(
     [
         ("huggingface_baseline_encoder", "roberta-base",),
-    ]
-)
-
-from wrappers import RobertaMLMWrapper
-MODEL_MAPPING = OrderedDict(
-    [
-        ("huggingface_baseline_encoder", RobertaMLMWrapper,),
-        ("my_baseline_encoder", FullModel,),
     ]
 )
 from objectives import *
@@ -99,4 +89,3 @@ OBJECTIVE_MAPPING = OrderedDict(
         ("simple_mlm", BERT_MLM_objective,),
     ]
 )
-

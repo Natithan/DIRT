@@ -1,9 +1,13 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 import os
-
 os.environ['TORCH_HOME'] = os.path.join('/cw', 'working-arwen', 'nathan')
 os.environ['ALLENNLP_CACHE_ROOT'] = os.path.join('/cw', 'working-arwen', 'nathan')
+
+
+from wrappers import MLMModelWrapper, MODEL_MAPPING
+
+
 from pathlib import Path
 from allennlp.data.iterators import BucketIterator
 from allennlp.training import Trainer
@@ -11,7 +15,7 @@ import torch.optim as optim
 import pickle
 
 from absl import app
-from config import FLAGS, MODEL_MAPPING, CONFIG_MAPPING
+from config import FLAGS, CONFIG_MAPPING
 
 from model import FullModel
 from text_input_pipeline import GutenbergReader
@@ -30,7 +34,7 @@ def main(_):
     reader = GutenbergReader()
     train_dataset, test_dataset, val_dataset, vocab = (reader.get_data_dict()[key] for key in
                                                        ('train', 'test', 'val', 'vocab'))
-    model = MODEL_MAPPING[FLAGS.model](vocab)
+    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],vocab)
     cuda_device = FLAGS.device_idx
     model = model.cuda(cuda_device)
 

@@ -23,25 +23,21 @@ def add_custom_tokens(vocab):
 
 class GutenbergReader(DatasetReader):
 
-    def __init__(self, token_indexers=None):
+    def __init__(self, token_indexer=None):
         super().__init__(lazy=False)
         self.splitter = OpenAISplitter()
-        self.token_indexers = token_indexers or {"ids": OpenaiTransformerBytePairIndexer(
+        self.token_indexer = token_indexer or OpenaiTransformerBytePairIndexer(
             model_path="https://allennlp.s3.amazonaws.com/models/openai-transformer-lm-2018.07.23.tar.gz",
-            tokens_to_add=[MASKING_TOKEN])}
-        self.objective = OBJECTIVE_MAPPING[FLAGS.objective]
+            tokens_to_add=[MASKING_TOKEN])
 
     def bp_len(self, token_list):
         return len(
-            [bp_token for token in token_list for bp_token in self.token_indexers['ids'].byte_pair_encode(token)])
+            [bp_token for token in token_list for bp_token in self.token_indexer.byte_pair_encode(token)])
 
     def text_to_instance(self, tokens, tags=None):
-        inputs, targets = self.objective(tokens)
 
-        input_field = TextField(inputs, self.token_indexers)
-        target_field = TextField(targets, self.token_indexers)
-        fields = {"inputs": input_field,
-                  "targets": target_field}
+        input_field = TextField(tokens, {'ids':self.token_indexer})
+        fields = {"inputs": input_field}
 
         # if tags:
         #     label_field = SequenceLabelField(labels=tags, sequence_field=sentence_field)
@@ -90,10 +86,11 @@ class GutenbergReader(DatasetReader):
         val_dataset = self.read(os.path.join(FLAGS.data_folder, 'val'))
         vocab = Vocabulary.from_instances(train_dataset + val_dataset,
                                           max_vocab_size=FLAGS.max_vocab_size)  # TODO fix vocab + openai tokenindexer coop: now vocab size is 2??
-        for dataset in (train_dataset, test_dataset, val_dataset):
-            for instance in dataset:
-                instance.index_fields(vocab)
-        # TODO add masking at this point
+        # for dataset in (train_dataset, test_dataset, val_dataset):
+        #     for idx, instance in enumerate(dataset):
+        #         instance.index_fields(vocab)
+        #         new_instance = self.objective(instance, self.token_indexer,vocab)
+        #         dataset[idx] = new_instance
         add_custom_tokens(vocab)
         return {"train": train_dataset,
                 "test": test_dataset,

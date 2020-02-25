@@ -1,7 +1,7 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 import os
-os.environ['TORCH_HOME'] = os.path.join('/cw', 'working-arwen', 'nathan')
+os.environ['TORCH_HOME'] = os.path.join('/cw', 'working-arwen', 'nathan') #TODO maybe find way to do this outside of code to make portable. Also in other places
 os.environ['ALLENNLP_CACHE_ROOT'] = os.path.join('/cw', 'working-arwen', 'nathan')
 
 

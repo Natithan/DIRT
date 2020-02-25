@@ -13,10 +13,10 @@ from constants import DECODER_START_TOKEN
 
 
 class FullModel(Model):
-    def __init__(self,do_teacher_forcing = True):
+    def __init__(self,vocab,do_teacher_forcing = True):
         """
         """
-        super().__init__()
+        super().__init__(vocab)
         self.embedder = AlbertEmbedder()
         self.encoder = MySequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
         self.decoder = MySequential(*[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
@@ -38,7 +38,7 @@ class FullModel(Model):
         vocab_probabilities = self.predictor(decoded)
         return vocab_probabilities
 
-    def forward(self, inputs, targets=None):
+    def forward(self, inputs, targets=None): # TODO change arguments to target_ids, masked_ids, padding_mask
         result_dict = {}
         input_ids, target_ids = inputs['ids'], (targets['ids'] if (targets is not None) else None)
         d_batch = input_ids.shape[

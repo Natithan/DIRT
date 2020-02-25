@@ -16,13 +16,12 @@ class MLMModelWrapper(Model):
         self.model = model(vocab)
         self.objective = OBJECTIVE_MAPPING[FLAGS.objective]
 
-    def forward(self, inputs):
+    def forward(self, inputs): #for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
         new_input_dict = {}
         new_input_dict['target_ids'] = inputs['ids']
-        new_input_dict['mask'] = inputs['mask']
-        new_input_dict['masked_ids'] = self.objective(inputs['ids'],self.vocab)
-        result_dict = self.model(**new_input_dict) #TODO fix TypeError: forward() got an unexpected keyword argument 'mask'
-        return result_dict
+        new_input_dict['padding_mask'] = inputs['ids'] != 0
+        new_input_dict['masked_ids'] = self.objective(inputs['ids'],self.vocab) #TODO make sure this doesn't mask padded indices as well
+        return self.model(**new_input_dict) #TODO fix TypeError: forward() got an unexpected keyword argument 'mask'
 
 
 class RobertaMLMWrapper(Model):
@@ -37,10 +36,8 @@ class RobertaMLMWrapper(Model):
         config = model_class.config_class.from_pretrained(config_path)
         self.model = model_class(config)
 
-    def forward(self, target_ids, masked_ids):
-        input_ids, input_padding_mask = target_ids['ids'], target_ids['mask']
-        target_ids, target_padding_mask = (masked_ids['ids'], masked_ids['mask']) if (masked_ids is not None) else (None, None)
-        tuple_result = self.model(input_ids=input_ids, masked_lm_labels=target_ids,attention_mask = input_padding_mask)
+    def forward(self, target_ids, masked_ids, padding_mask):
+        tuple_result = self.model(input_ids=target_ids, masked_lm_labels=masked_ids,attention_mask = padding_mask)
         result_dict = {}
         if target_ids is not None:
             result_dict['loss'] = tuple_result[0]  # Add more parts of output when needed :P

@@ -46,7 +46,10 @@ def BERT_MLM_objective(target_ids, vocab):  # TODO maybe add dynamic masking? I.
     # inputs = [t if (i not in masked_indices) else Token(MASKING_TOKEN) for i, t in enumerate(tokens)]
     # targets = [t for t in tokens]
     # return inputs, targets
+    padding_id = 0
     masking_id = vocab.get_token_index(MASKING_TOKEN + BPE_INDEXER_SUFFIX, namespace='openai_transformer')
-    masked_ids = torch.where(torch.rand(target_ids.shape).cuda(FLAGS.device_idx) > FLAGS.masking_fraction, target_ids,
-                             masking_id * torch.ones_like(target_ids)) #TODO find fix for "uniform_cuda" not implemented for 'Long'
+    condition = (torch.rand(target_ids.shape).cuda(FLAGS.device_idx) > FLAGS.masking_fraction) | (target_ids == padding_id)
+    masked_ids = torch.where(condition,
+                             target_ids,
+                             masking_id * torch.ones_like(target_ids))
     return masked_ids

@@ -49,7 +49,7 @@ def main(_):
                       validation_dataset=val_dataset,
                       patience=FLAGS.patience,
                       num_epochs=FLAGS.num_epochs,
-                      serialization_dir=Path(FLAGS.model_folder, FLAGS.run_name),
+                      serialization_dir=run_dir,
                       cuda_device=cuda_device)
     trainer.train()
 

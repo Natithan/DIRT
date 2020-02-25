@@ -20,8 +20,8 @@ class MLMModelWrapper(Model):
         new_input_dict = {}
         new_input_dict['target_ids'] = inputs['ids']
         new_input_dict['padding_mask'] = inputs['ids'] != 0
-        new_input_dict['masked_ids'] = self.objective(inputs['ids'],self.vocab) #TODO make sure this doesn't mask padded indices as well
-        return self.model(**new_input_dict) #TODO fix TypeError: forward() got an unexpected keyword argument 'mask'
+        new_input_dict['masked_ids'] = self.objective(inputs['ids'],self.vocab)
+        return self.model(**new_input_dict)
 
 
 class RobertaMLMWrapper(Model):

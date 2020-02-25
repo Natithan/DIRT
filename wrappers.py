@@ -41,6 +41,9 @@ class RobertaMLMWrapper(Model):
         result_dict = {}
         if target_ids is not None:
             result_dict['loss'] = tuple_result[0]  # Add more parts of output when needed :P
+            result_dict['vocab_logits'] = tuple_result[1]
+        else:
+            result_dict['vocab_logits'] = tuple_result[0]
         return result_dict
 
 

@@ -34,7 +34,7 @@ def main(_):
         inputs = [[instance.fields['inputs'].tokens] for instance in instances]
         prediction = model.forward_on_instances(instances) # TODO make sure this is up-to-date with current model wrapper. Make sure it also outputs results instead of only loss
         predicted_words = [[vocab.get_token_from_index(i) for i in sequence['prediction']] for sequence in prediction] #TODO avoid my model just outputting 'mask' all of the time ;)
-        # actual_target =
+        # actual_target = #TODO Avoid HF model to always output mask tokens :P
         for input, target, prediction in zip(inputs, targets, predicted_words):
             print(f'Input: {input}')
             print(f'Target: {target}')

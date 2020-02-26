@@ -37,10 +37,13 @@ class RobertaMLMWrapper(Model):
         self.model = model_class(config)
 
     def forward(self, target_ids, masked_ids, padding_mask):
-        tuple_result = self.model(input_ids=target_ids, masked_lm_labels=masked_ids,attention_mask = padding_mask)
+        tuple_result = self.model(input_ids=masked_ids, masked_lm_labels=target_ids,attention_mask = padding_mask)
         result_dict = {}
         if target_ids is not None:
             result_dict['loss'] = tuple_result[0]  # Add more parts of output when needed :P
+            result_dict['vocab_logits'] = tuple_result[1]
+        else:
+            result_dict['vocab_logits'] = tuple_result[0]
         return result_dict
 
 

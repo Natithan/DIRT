@@ -47,7 +47,7 @@ class GutenbergReader(DatasetReader):
             fields)  # TODO make sure no mismatch between masks that get converted to single BPE token, and the words they cover in targets
 
 
-    def _read(self, folder_path):
+    def _read(self, folder_path): #TODO en route to making tokenizer wrapper: see if needed and then how to deal with bpe adding length to slices
         total_yields = 0
         for i, file in enumerate(os.scandir(folder_path)):
             if FLAGS.mini:

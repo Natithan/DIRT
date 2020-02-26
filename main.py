@@ -1,12 +1,7 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 import os
-os.environ['TORCH_HOME'] = os.path.join('/cw', 'working-arwen', 'nathan') #TODO maybe find way to do this outside of code to make portable. Also in other places
-os.environ['ALLENNLP_CACHE_ROOT'] = os.path.join('/cw', 'working-arwen', 'nathan')
-
-
-from wrappers import MLMModelWrapper, MODEL_MAPPING
-
+from wrappers import MLMModelWrapper, MODEL_MAPPING, TOKENIZER_MAPPING
 
 from pathlib import Path
 from allennlp.data.iterators import BucketIterator
@@ -31,7 +26,7 @@ def main(_):
         os.remove(flagfile)
     open(flagfile, "x")
     FLAGS.append_flags_into_file(flagfile)
-    reader = GutenbergReader()
+    reader = GutenbergReader(token_indexer=TOKENIZER_MAPPING[FLAGS.model])
     train_dataset, test_dataset, val_dataset, vocab = (reader.get_data_dict()[key] for key in
                                                        ('train', 'test', 'val', 'vocab'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],vocab)

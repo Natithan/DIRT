@@ -1,8 +1,6 @@
 import os
 
 from transformers import RobertaTokenizer, RobertaForMaskedLM
-
-os.environ['TORCH_HOME'] = os.path.join('/cw', 'working-arwen', 'nathan')
 from pathlib import Path
 from allennlp.data.iterators import BucketIterator
 from allennlp.training import Trainer

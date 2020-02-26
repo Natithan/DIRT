@@ -5,7 +5,7 @@ import sys
 from datetime import datetime
 from absl import flags
 # %% FLAGS
-from util import get_freer_gpu #TODO maybe make config classes like in huggingface?
+from util import get_freer_gpu
 logger = logging.getLogger(__name__)
 
 

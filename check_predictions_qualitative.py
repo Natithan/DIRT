@@ -1,7 +1,4 @@
 import os
-os.environ['TORCH_HOME'] = os.path.join('/cw', 'working-arwen', 'nathan')
-os.environ['ALLENNLP_CACHE_ROOT'] = os.path.join('/cw', 'working-arwen', 'nathan')
-
 import random
 
 from wrappers import MLMModelWrapper, MODEL_MAPPING

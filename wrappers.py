@@ -33,7 +33,7 @@ class RobertaMLMWrapper(Model):
         super().__init__(dummy_vocab)
         config_path = CONFIG_MAPPING[FLAGS.model]
         model_class = RobertaForMaskedLM
-        config = model_class.config_class.from_pretrained(config_path)
+        config = model_class.config_class.from_pretrained(config_path) #TODO find out if I'm using a pretrained model that is trained on different ids for words
         self.model = model_class(config)
 
     def forward(self, target_ids, masked_ids, padding_mask):
@@ -46,8 +46,7 @@ class RobertaMLMWrapper(Model):
             result_dict['vocab_logits'] = tuple_result[0]
         return result_dict
 
-
-class RobertaTokenizerWrapper(TokenIndexer):
+class RobertaTokenizerWrapper(TokenIndexer): #TODO make sure I tokenize with useful indices if using pretrained model
 
     def __init__(self, tokenizer, namespace='tokens'):
         super().__init__()
@@ -69,7 +68,6 @@ class RobertaTokenizerWrapper(TokenIndexer):
     def pad_token_sequence(self, tokens: Dict[str, List[TokenType]], desired_num_tokens: Dict[str, int],
                            padding_lengths: Dict[str, int]) -> Dict[str, TokenType]:
         pass
-
 
 MODEL_MAPPING = OrderedDict(
     [

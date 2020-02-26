@@ -37,9 +37,8 @@ def main(_):
             instances = random.sample(dataset,3)
 
             inputs = [[instance.fields['inputs'].tokens] for instance in instances]
-            prediction = model.forward_on_instances(instances) # TODO make sure this is up-to-date with current model wrapper. Make sure it also outputs results instead of only loss
+            prediction = model.forward_on_instances(instances)
             predicted_words = [[vocab.get_token_from_index(index,'openai_transformer') for index in prediction[batch_sample]['vocab_logits'].argmax(1)] for batch_sample in range(len(prediction))] #TODO avoid my model just outputting 'mask' all of the time ;)
-            # actual_target =
             for input, prediction in zip(inputs, predicted_words):
                 print(f'Input: {input}')
                 print(f'Prediction: {prediction}')

@@ -4,7 +4,7 @@ import os
 from wrappers import MLMModelWrapper, MODEL_MAPPING, TOKENIZER_MAPPING
 
 from pathlib import Path
-from allennlp.data.iterators import BucketIterator
+from allennlp.data.iterators import BucketIterator, BasicIterator
 from allennlp.training import Trainer
 import torch.optim as optim
 import pickle
@@ -35,7 +35,7 @@ def main(_):
 
     optimizer = optim.Adam(model.parameters())
 
-    iterator = BucketIterator(batch_size=FLAGS.d_batch, sorting_keys=[('inputs', 'num_tokens')])
+    iterator = BasicIterator(batch_size=FLAGS.d_batch)
     iterator.index_with(vocab)
     trainer = Trainer(model=model,  # TODO make sure I can pickup training from interrupted process without errors
                       optimizer=optimizer,

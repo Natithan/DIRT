@@ -3,7 +3,7 @@ from pathlib import Path
 
 from allennlp.data.tokenizers import Token
 from allennlp.data import Vocabulary, DatasetReader, Instance
-from allennlp.data.fields import TextField, LabelField
+from allennlp.data.fields import TextField, LabelField, ArrayField
 from allennlp.data.token_indexers import SingleIdTokenIndexer, OpenaiTransformerBytePairIndexer
 
 from constants import DECODER_START_TOKEN, MASKING_TOKEN
@@ -11,7 +11,7 @@ from objectives import t5_denoise_spans_objective
 import os
 from config import FLAGS, OBJECTIVE_MAPPING
 from allennlp.data.tokenizers.word_splitter import OpenAISplitter
-
+import numpy as np
 
 def add_custom_tokens(vocab):
     """
@@ -30,25 +30,18 @@ class GutenbergReader(DatasetReader):
             model_path="https://allennlp.s3.amazonaws.com/models/openai-transformer-lm-2018.07.23.tar.gz",
             tokens_to_add=[MASKING_TOKEN])
 
-    def bp_len(self, token_list):
-        return len(
-            [bp_token for token in token_list for bp_token in self.token_indexer.byte_pair_encode(token)])
 
-    def text_to_instance(self, tokens, tags=None):
+    def text_to_instance(self, token_ids, tags=None):
 
-        input_field = TextField(tokens, {'ids':self.token_indexer})
-        fields = {"inputs": input_field}
-
-        # if tags:
-        #     label_field = SequenceLabelField(labels=tags, sequence_field=sentence_field)
-        #     fields["labels"] = label_field
+        fields = {'input_ids': ArrayField(np.array(token_ids),dtype=np.int32)}
 
         return Instance(
-            fields)  # TODO make sure no mismatch between masks that get converted to single BPE token, and the words they cover in targets
+            fields)
 
 
     def _read(self, folder_path): #TODO en route to making tokenizer wrapper: see if needed and then how to deal with bpe adding length to slices
         total_yields = 0
+        max_raw_seq_length = FLAGS.max_seq_length - 2 #Exclusing bos and eos tokens
         for i, file in enumerate(os.scandir(folder_path)):
             if FLAGS.mini:
                 if i > 0:
@@ -58,27 +51,23 @@ class GutenbergReader(DatasetReader):
                 nb_sequences = 0
 
                 for j, line in enumerate(f):
-                    tokens = self.splitter.split_words(
-                        line.decode("utf-8", errors='ignore'))  # Skipping undecodable characters
-                    running_sequence += tokens
-                    bp_overflow_amount = self.bp_len(
-                        running_sequence) - FLAGS.max_seq_length  # TODO this might be too slow to be workable for large data
-
-                    if bp_overflow_amount >= 0:
-                        for t_idx in range(len(tokens)):
-                            if self.bp_len(tokens[t_idx:]) < bp_overflow_amount:
-                                cutoff_idx = len(running_sequence) - len(tokens) + t_idx - 1
-                                break
-                        current_sequence = running_sequence[:cutoff_idx]
-                        running_sequence = running_sequence[cutoff_idx:]
+                    token_ids = self.token_indexer.encode(line.decode("utf-8", errors='ignore'),add_special_tokens=False,add_prefix_space=True) #False to avoid inserting <s> and </s> tokens around every line, as a sequence is made of multiple lines
+                    running_sequence += token_ids
+                    if len(running_sequence) >= max_raw_seq_length:
+                        current_sequence = running_sequence[:max_raw_seq_length]
+                        current_sequence = self.token_indexer.encode(current_sequence,add_special_tokens=True) # Now add start and end tokens
+                        running_sequence = running_sequence[max_raw_seq_length:]
                         nb_sequences += 1
+
                         if FLAGS.mini:
                             if nb_sequences < 2:
                                 continue
                             if nb_sequences > 4:
                                 break
                         total_yields += 1
+
                         yield self.text_to_instance(current_sequence)
+
 
     def _read_data_folders(self):
         train_dataset = self.read(os.path.join(FLAGS.data_folder, 'train'))

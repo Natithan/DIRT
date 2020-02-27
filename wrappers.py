@@ -17,11 +17,11 @@ class MLMModelWrapper(Model):
         self.model = model(vocab)
         self.objective = OBJECTIVE_MAPPING[FLAGS.objective]
 
-    def forward(self, inputs):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
+    def forward(self, input_ids):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
         new_input_dict = {}
-        new_input_dict['target_ids'] = inputs['ids']
-        new_input_dict['padding_mask'] = inputs['ids'] != 0
-        new_input_dict['masked_ids'] = self.objective(inputs['ids'], self.vocab)
+        new_input_dict['target_ids'] = input_ids['ids']
+        new_input_dict['padding_mask'] = input_ids['ids'] != 0
+        new_input_dict['masked_ids'] = self.objective(input_ids['ids'], self.vocab)
         return self.model(**new_input_dict)
 
 
@@ -53,8 +53,12 @@ class RobertaTokenizerWrapper(TokenIndexer):  # TODO make sure I tokenize with u
 
     def __init__(self, namespace='tokens'):
         super().__init__()
-        self.tokenizer = RobertaTokenizer
+        self.tokenizer = RobertaTokenizer.from_pretrained(CONFIG_MAPPING[
+                                                              'huggingface_baseline_encoder'])  # TODO maybe refactor later to deal with non-from-pretrained model
         self.namespace = namespace
+
+    def encode(self, text):
+        return self.tokenizer.encode(text)
 
     def count_vocab_items(self, token: Token, counter: Dict[str, Dict[str, int]]):
         text = token.text
@@ -81,7 +85,10 @@ MODEL_MAPPING = OrderedDict(
 
 TOKENIZER_MAPPING = OrderedDict(
     [
-        ("huggingface_baseline_encoder", RobertaTokenizerWrapper(),),
-        ("my_baseline_encoder", RobertaTokenizerWrapper(),),
+        # ("huggingface_baseline_encoder", RobertaTokenizerWrapper(),),
+        ("huggingface_baseline_encoder", RobertaTokenizer.from_pretrained(CONFIG_MAPPING[
+                                                              'huggingface_baseline_encoder']),),
+        ("my_baseline_encoder", RobertaTokenizer.from_pretrained(CONFIG_MAPPING[
+                                                              'huggingface_baseline_encoder']),),
     ]
 )

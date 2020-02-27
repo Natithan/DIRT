@@ -45,35 +45,6 @@ flags.DEFINE_integer("beam_width", 3, "Width of the beam during the decoding bea
 flags.DEFINE_integer("max_vocab_size", 30000, "Maximum number of different tokens to differentiate.")
 
 FLAGS(sys.argv)
-# class BaseConfig(object):
-#     """
-#     Base class for configuration files
-#     """
-#     def __init__(self, **kwargs):
-#         self.d_batch = kwargs.pop("d_batch", 20)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#         self.output_attentions = kwargs.pop("output_attentions", False)
-#
-#         # Additional attributes without default values
-#         for key, value in kwargs.items():
-#             try:
-#                 setattr(self, key, value)
-#             except AttributeError as err:
-#                 logger.error("Can't set {} with value {} for {}".format(key, value, self))
-#                 raise err
-# String-to-object mappings
 
 # Maps from my name for models to huggingface shortcut names
 CONFIG_MAPPING = OrderedDict(

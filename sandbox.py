@@ -8,3 +8,5 @@ input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_t
     0)  # Batch size 1
 outputs = model(input_ids, masked_lm_labels=input_ids)
 loss, prediction_scores = outputs[:2]
+prediction = tokenizer.decode(prediction_scores.argmax(2)[0])
+print(prediction)

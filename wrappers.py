@@ -16,12 +16,14 @@ class MLMModelWrapper(Model):
         super().__init__(vocab)
         self.model = model(vocab)
         self.objective = OBJECTIVE_MAPPING[FLAGS.objective]
+        self.token_indexer = TOKENIZER_MAPPING[FLAGS.model]
+
 
     def forward(self, input_ids):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
         new_input_dict = {}
-        new_input_dict['target_ids'] = input_ids['ids']
-        new_input_dict['padding_mask'] = input_ids['ids'] != 0
-        new_input_dict['masked_ids'] = self.objective(input_ids['ids'], self.vocab)
+        new_input_dict['target_ids'] = input_ids
+        new_input_dict['padding_mask'] = input_ids != self.token_indexer.pad_token_id
+        new_input_dict['masked_ids'] = self.objective(input_ids, self.token_indexer)
         return self.model(**new_input_dict)
 
 
@@ -32,11 +34,14 @@ class RobertaMLMWrapper(Model):
 
     def __init__(self, dummy_vocab):
         super().__init__(dummy_vocab)
-        config_path = CONFIG_MAPPING[FLAGS.model]
+        config_name = CONFIG_MAPPING[FLAGS.model]
         model_class = RobertaForMaskedLM
-        config = model_class.config_class.from_pretrained(
-            config_path)  # TODO find out if I'm using a pretrained model that is trained on different ids for words
-        self.model = model_class(config)
+        if FLAGS.use_pretrained_weights:
+            self.model = model_class.from_pretrained(config_name)
+        else:
+            config = model_class.config_class.from_pretrained(
+                config_name)
+            self.model = model_class(config)
 
     def forward(self, target_ids, masked_ids, padding_mask):
         tuple_result = self.model(input_ids=masked_ids, masked_lm_labels=target_ids, attention_mask=padding_mask)

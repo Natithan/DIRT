@@ -43,6 +43,9 @@ flags.DEFINE_integer("nb_feedforward_layers", 2,
 flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings.")
 flags.DEFINE_integer("beam_width", 3, "Width of the beam during the decoding beam search phase.")
 flags.DEFINE_integer("max_vocab_size", 30000, "Maximum number of different tokens to differentiate.")
+flags.DEFINE_bool("use_pretrained_weights", True, "Whether to initialize weights with pretrained weights. "
+                                                  "If so, the CONFIG_MAPPING is used to determine weights. "
+                                                  "Only works for hf_baseline so far ;)") #TODO maybe expand this to own model
 
 FLAGS(sys.argv)
 

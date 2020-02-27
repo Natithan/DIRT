@@ -35,20 +35,13 @@ def t5_denoise_spans_objective(
     return unique_masked_given, unique_masked_target
 
 
-def BERT_MLM_objective(target_ids, vocab):  # TODO maybe add dynamic masking? I.e. at every entrance to the model
+def BERT_MLM_objective(target_ids, token_indexer):
     '''
     Produces a tensor of the same shape as target_ids, but with FLAGS.masking_fraction of the tokens replaces by a mask id
     '''
-
-    # masked_indices = sorted(random.sample(range(len(tokens)), int(len(tokens) * FLAGS.masking_fraction)))  #
-    # # inputs = [Token(t) if (i not in masked_indices) else Token(MASKING_TOKEN) for i, t in enumerate(tokens)]
-    # # targets = [Token(t) for t in tokens]
-    # inputs = [t if (i not in masked_indices) else Token(MASKING_TOKEN) for i, t in enumerate(tokens)]
-    # targets = [t for t in tokens]
-    # return inputs, targets
-    padding_id = 0
-    masking_id = vocab.get_token_index(MASKING_TOKEN + BPE_INDEXER_SUFFIX, namespace='openai_transformer')
-    condition = (torch.rand(target_ids.shape).cuda(FLAGS.device_idx) > FLAGS.masking_fraction) | (target_ids == padding_id)
+    masking_id = token_indexer.mask_token_id
+    condition = (torch.rand(target_ids.shape).cuda(FLAGS.device_idx) > FLAGS.masking_fraction) | \
+                (target_ids.cpu().apply_(lambda x: x in token_indexer.all_special_ids).cuda(FLAGS.device_idx).to(torch.bool))
     masked_ids = torch.where(condition,
                              target_ids,
                              masking_id * torch.ones_like(target_ids))

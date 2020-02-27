@@ -13,6 +13,9 @@ from config import FLAGS, OBJECTIVE_MAPPING
 from allennlp.data.tokenizers.word_splitter import OpenAISplitter
 import numpy as np
 
+from wrappers import TOKENIZER_MAPPING
+
+
 def add_custom_tokens(vocab):
     """
     Add extra tokens needed for the specific encoder-decoder model I am using
@@ -25,21 +28,18 @@ class GutenbergReader(DatasetReader):
 
     def __init__(self, token_indexer=None):
         super().__init__(lazy=False)
-        self.splitter = OpenAISplitter()
-        self.token_indexer = token_indexer or OpenaiTransformerBytePairIndexer(
-            model_path="https://allennlp.s3.amazonaws.com/models/openai-transformer-lm-2018.07.23.tar.gz",
-            tokens_to_add=[MASKING_TOKEN])
+        self.token_indexer = token_indexer or TOKENIZER_MAPPING[FLAGS.model]
 
 
     def text_to_instance(self, token_ids, tags=None):
 
-        fields = {'input_ids': ArrayField(np.array(token_ids),dtype=np.int32)}
+        fields = {'input_ids': ArrayField(np.array(token_ids),dtype=np.int64 )}
 
         return Instance(
             fields)
 
 
-    def _read(self, folder_path): #TODO en route to making tokenizer wrapper: see if needed and then how to deal with bpe adding length to slices
+    def _read(self, folder_path):
         total_yields = 0
         max_raw_seq_length = FLAGS.max_seq_length - 2 #Exclusing bos and eos tokens
         for i, file in enumerate(os.scandir(folder_path)):

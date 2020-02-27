@@ -17,6 +17,8 @@ from text_input_pipeline import GutenbergReader
 
 
 def main(_):
+
+    # Create folders and files to store results and configs
     run_dir = Path(FLAGS.model_folder, FLAGS.model, FLAGS.run_name)
     if not os.path.exists(run_dir):
         os.makedirs(run_dir)
@@ -26,14 +28,15 @@ def main(_):
         os.remove(flagfile)
     open(flagfile, "x")
     FLAGS.append_flags_into_file(flagfile)
-    reader = GutenbergReader(token_indexer=TOKENIZER_MAPPING[FLAGS.model])
+
+    reader = GutenbergReader()
     train_dataset, test_dataset, val_dataset, vocab = (reader.get_data_dict()[key] for key in
                                                        ('train', 'test', 'val', 'vocab'))
-    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],vocab)
+    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],vocab) # TODO figure out why unfinetuned pretrained HF roberta works in sandbox, but not here
     cuda_device = FLAGS.device_idx
     model = model.cuda(cuda_device)
 
-    optimizer = optim.Adam(model.parameters())
+    optimizer = optim.Adam(model.parameters(),lr=10e-6)
 
     iterator = BasicIterator(batch_size=FLAGS.d_batch)
     iterator.index_with(vocab)

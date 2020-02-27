@@ -38,17 +38,15 @@ class FullModel(Model):
         vocab_probabilities = self.predictor(decoded)
         return vocab_probabilities
 
-    def forward(self, inputs, targets=None): # TODO change arguments to target_ids, masked_ids, padding_mask
-        result_dict = {}
-        input_ids, target_ids = inputs['ids'], (targets['ids'] if (targets is not None) else None)
-        d_batch = input_ids.shape[
+    def forward(self, masked_ids, padding_mask, target_ids=None):
+        d_batch = masked_ids.shape[
             0]  # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
         max_target_seq_length = int(FLAGS.max_seq_length * FLAGS.masking_fraction * 2 + 1) if (
                     target_ids is None) else target_ids.shape[-1]  # Longest length if no adjacent masks
         targets = self.process_targets_for_loss(target_ids, max_target_seq_length)
 
         # ENCODING
-        embedded_inputs, padding_mask = self.embedder(input_ids)
+        embedded_inputs = self.embedder(masked_ids)
         encoded, _ = self.encoder(MyDropout()(embedded_inputs), padding_mask)
 
         # DECODING
@@ -358,9 +356,8 @@ class AlbertEmbedder(nn.Module):
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
 
     def forward(self, idxs):
-        padding_mask = (idxs != 0)  # AllenNLP always puts padding token first in vocab
         embedded = self.idx_to_embedding(idxs)
         hidden = self.embedding_to_hidden(embedded)
-        return hidden, padding_mask
+        return hidden
 
 

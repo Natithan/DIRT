@@ -1,19 +1,12 @@
-import pickle
-from pathlib import Path
-
-from allennlp.data.tokenizers import Token
 from allennlp.data import Vocabulary, DatasetReader, Instance
-from allennlp.data.fields import TextField, LabelField, ArrayField
-from allennlp.data.token_indexers import SingleIdTokenIndexer, OpenaiTransformerBytePairIndexer
+from allennlp.data.fields import ArrayField
 
-from constants import DECODER_START_TOKEN, MASKING_TOKEN
-from objectives import t5_denoise_spans_objective
+from constants import DECODER_START_TOKEN
 import os
-from config import FLAGS, OBJECTIVE_MAPPING
-from allennlp.data.tokenizers.word_splitter import OpenAISplitter
+from config import FLAGS
 import numpy as np
 
-from wrappers import TOKENIZER_MAPPING
+from models.wrappers import TOKENIZER_MAPPING
 
 
 def add_custom_tokens(vocab):

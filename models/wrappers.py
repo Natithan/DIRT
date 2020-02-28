@@ -4,11 +4,12 @@ from allennlp.models import Model
 from typing import Dict, List
 
 from allennlp.data import TokenIndexer, TokenType, Token, Vocabulary
-from torch import nn
 
 from config import FLAGS, CONFIG_MAPPING, OBJECTIVE_MAPPING
-from model import FullModel
+from models.model import FullModel
 from transformers import RobertaForMaskedLM, RobertaTokenizer
+
+from util import DefaultOrderedDict
 
 
 class MLMModelWrapper(Model):
@@ -54,7 +55,7 @@ class RobertaMLMWrapper(Model):
         return result_dict
 
 
-class RobertaTokenizerWrapper(TokenIndexer):  # TODO make sure I tokenize with useful indices if using pretrained model
+class RobertaTokenizerWrapper(TokenIndexer):
 
     def __init__(self, namespace='tokens'):
         super().__init__()
@@ -79,21 +80,19 @@ class RobertaTokenizerWrapper(TokenIndexer):  # TODO make sure I tokenize with u
     def pad_token_sequence(self, tokens: Dict[str, List[TokenType]], desired_num_tokens: Dict[str, int],
                            padding_lengths: Dict[str, int]) -> Dict[str, TokenType]:
         pass
+TOKENIZER_MAPPING = DefaultOrderedDict(lambda : RobertaTokenizer.from_pretrained(CONFIG_MAPPING['huggingface_baseline_encoder']),
+    [
+    ]
+)
 
+from models.dummy_models import RandomMLMModel, ConstantMLMModel
 
 MODEL_MAPPING = OrderedDict(
     [
         ("huggingface_baseline_encoder", RobertaMLMWrapper,),
         ("my_baseline_encoder", FullModel,),
+        ("random", RandomMLMModel,),
+        ("constant", ConstantMLMModel,),
     ]
 )
 
-TOKENIZER_MAPPING = OrderedDict(
-    [
-        # ("huggingface_baseline_encoder", RobertaTokenizerWrapper(),),
-        ("huggingface_baseline_encoder", RobertaTokenizer.from_pretrained(CONFIG_MAPPING[
-                                                              'huggingface_baseline_encoder']),),
-        ("my_baseline_encoder", RobertaTokenizer.from_pretrained(CONFIG_MAPPING[
-                                                              'huggingface_baseline_encoder']),),
-    ]
-)

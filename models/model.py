@@ -35,8 +35,8 @@ class FullModel(Model):
     def decode_idxs_to_probabilities(self, decoder_input_token_idxs, encoded, padding_mask):
         decoder_input_embeddings, _ = self.embedder(decoder_input_token_idxs)
         decoded, _, _ = self.decoder(nn.Dropout()(decoder_input_embeddings), encoded, padding_mask)
-        vocab_probabilities = self.predictor(decoded)
-        return vocab_probabilities
+        vocab_scores = self.predictor(decoded)
+        return vocab_scores
 
     def forward(self, masked_ids, padding_mask, target_ids=None):
         d_batch = masked_ids.shape[
@@ -57,18 +57,18 @@ class FullModel(Model):
                     (tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]] * d_batch).to(FLAGS.device_idx), #TODO change this to not use self.vocab, but directly an id
                      target_ids[:, :-1]),
                     dim=1)  # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
-                vocab_probabilities = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded, padding_mask)
-                _, output_idxs = torch.max(vocab_probabilities,dim=-1)
+                vocab_scores = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded, padding_mask)
+                _, output_idxs = torch.max(vocab_scores,dim=-1)
             else:
-                vocab_probabilities, output_idxs = self.beam_decode(d_batch, encoded, max_target_seq_length, padding_mask)
+                vocab_scores, output_idxs = self.beam_decode(d_batch, encoded, max_target_seq_length, padding_mask)
                 result_dict['output_idxs'] = output_idxs
         else:
-            vocab_probabilities = self.predictor(encoded) #TODO finish setting up encoder-only baseline
-            _, output_idxs = torch.max(vocab_probabilities,dim=-1)
+            vocab_scores = self.predictor(encoded) #TODO finish setting up encoder-only baseline
+            _, output_idxs = torch.max(vocab_scores,dim=-1)
 
         if targets is not None:
-            vocab_probabilities_contiguous = vocab_probabilities.contiguous().view(-1, FLAGS.max_vocab_size)
-            result_dict['loss'] = nn.CrossEntropyLoss()(vocab_probabilities_contiguous, targets)
+            vocab_scores_contiguous = vocab_scores.contiguous().view(-1, FLAGS.max_vocab_size)
+            result_dict['loss'] = nn.CrossEntropyLoss()(vocab_scores_contiguous, targets) #TODO add weighting here to only look at masked indices
         result_dict['output_idxs'] = output_idxs
 
         return result_dict  # Dictionary format for AllenNLP trainer loop
@@ -137,13 +137,11 @@ class Predictor(nn.Module):
     """
     def __init__(self):
         super().__init__()
-        self.ffn = nn.Linear(FLAGS.d_hidden,FLAGS.max_vocab_size)
+        self.ffn = nn.Linear(FLAGS.d_hidden,FLAGS.max_vocab_size) # TODO change this to using token_indexer vocab size?
     def forward(self,hidden_states):
-        return nn.Softmax(dim=-1)(
             self.ffn(
                 MyDropout()(hidden_states)
-            )
-        ) # TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights with output_embeddings.weight = input_embeddings.weight
+            ) # TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights with output_embeddings.weight = input_embeddings.weight
 
 
 class MyDropout(nn.Dropout):

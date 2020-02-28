@@ -9,7 +9,6 @@ import torch.optim as optim
 from absl import app
 from config import FLAGS
 
-from model import FullModel
 from text_input_pipeline import GutenbergReader
 
 

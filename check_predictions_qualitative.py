@@ -1,7 +1,7 @@
 import os
 import random
 
-from wrappers import MLMModelWrapper, MODEL_MAPPING
+from models.wrappers import MLMModelWrapper, MODEL_MAPPING
 
 import sys
 
@@ -9,7 +9,6 @@ import torch
 from absl import app
 
 from config import FLAGS
-from model import FullModel
 from pathlib import Path
 
 from text_input_pipeline import GutenbergReader

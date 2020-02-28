@@ -1,18 +1,16 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 import os
-from wrappers import MLMModelWrapper, MODEL_MAPPING, TOKENIZER_MAPPING
+from models.wrappers import MLMModelWrapper, MODEL_MAPPING
 
 from pathlib import Path
-from allennlp.data.iterators import BucketIterator, BasicIterator
+from allennlp.data.iterators import BasicIterator
 from allennlp.training import Trainer
 import torch.optim as optim
-import pickle
 
 from absl import app
-from config import FLAGS, CONFIG_MAPPING
+from config import FLAGS
 
-from model import FullModel
 from text_input_pipeline import GutenbergReader
 
 

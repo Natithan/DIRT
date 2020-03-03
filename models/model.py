@@ -54,7 +54,7 @@ class FullModel(Model):
             if self.teacher_forcing:
                 # With teacher forcing, we can parallelize decoding using a causal mask
                 shifted_target_tokens = torch.cat(
-                    (tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]] * d_batch).to(FLAGS.device_idx), #TODO change this to not use self.vocab, but directly an id
+                    (tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]] * d_batch).to(), #TODO change this to not use self.vocab, but directly an id
                      target_ids[:, :-1]),
                     dim=1)  # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
                 vocab_scores = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded, padding_mask)
@@ -76,7 +76,7 @@ class FullModel(Model):
     def beam_decode(self, d_batch, encoded, max_target_seq_length, padding_mask): #TODO make it so that this also outputs vocab probabilities, to allow training without teacher forcing
         k = FLAGS.beam_width
         out_seq_length = max_target_seq_length + 1  # To allow start token in the output
-        output_idxs = torch.zeros(d_batch, out_seq_length, k, dtype=torch.long).to(FLAGS.device_idx)
+        output_idxs = torch.zeros(d_batch, out_seq_length, k, dtype=torch.long).to()
         output_idxs[:, 0, :] = self.vocab.get_token_index(DECODER_START_TOKEN) #TODO change this to not use self.vocab, but directly an id
         output_probs = torch.ones(d_batch, k, dtype=torch.long).to(
             FLAGS.device_idx)  # starting probability for product of probabilities along path
@@ -233,9 +233,9 @@ class MultiHeadAttention(nn.Module):
         if self.use_causal_mask:
             causal_mask = tensor([[[0 if value_index <= query_index else -float('inf') for value_index in
                                     range(value_length)] for query_index in range(query_length)]] * (
-                                             d_batch * FLAGS.nb_heads)).cuda(FLAGS.device_idx)
+                                             d_batch * FLAGS.nb_heads)).cuda()
         if padding_mask is None:
-            padding_mask = torch.zeros(d_batch, value_length).cuda(FLAGS.device_idx)
+            padding_mask = torch.zeros(d_batch, value_length).cuda()
         else:
             padding_mask = torch.log(padding_mask.type(
                 torch.float))  # Because we are masking before pushing through softmax: we need -inf to have ) after softmax, and 0 to have 1 after softmax
@@ -283,7 +283,7 @@ class MultiHeadAttention(nn.Module):
     def select_pos_embeddings(self, query_length, value_length, d_batch):
         rel_pos_indices = tensor(
             [[q_idx - k_idx for k_idx in range(value_length)] for q_idx in range(query_length)]) \
-            .cuda(FLAGS.device_idx)  # shape [nb_heads, query_length, value_length]
+            .cuda()  # shape [nb_heads, query_length, value_length]
         bucket_idxs = MultiHeadAttention._relative_position_bucket(rel_pos_indices)
         single_pos_embeddings = self.relative_attention_bias(bucket_idxs)
         batch_pos_embeddings = single_pos_embeddings.repeat(1, 1, d_batch).permute(2, 0, 1)

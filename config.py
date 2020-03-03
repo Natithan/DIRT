@@ -46,7 +46,7 @@ flags.DEFINE_integer("max_vocab_size", 30000, "Maximum number of different token
 flags.DEFINE_bool("use_pretrained_weights", True, "Whether to initialize weights with pretrained weights. "
                                                   "If so, the CONFIG_MAPPING is used to determine weights. "
                                                   "Only works for hf_baseline so far ;)") #TODO maybe expand this to own model
-
+flags.DEFINE_bool("fresh_data",False,"If True, don't use a pickled version of the data input if that existed")
 FLAGS(sys.argv)
 
 # Maps from my name for models to huggingface shortcut names

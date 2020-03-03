@@ -10,3 +10,4 @@ outputs = model(input_ids, masked_lm_labels=input_ids)
 loss, prediction_scores = outputs[:2]
 prediction = tokenizer.decode(prediction_scores.argmax(2)[0])
 print(prediction)
+

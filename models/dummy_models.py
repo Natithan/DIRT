@@ -22,7 +22,7 @@ class RandomMLMModel(Model):
 
     def forward(self, target_ids, masked_ids, padding_mask) -> Dict[str, torch.Tensor]:
         tokenizer = TOKENIZER_MAPPING[FLAGS.model]
-        vocab_scores = torch.rand(target_ids.shape[0], target_ids.shape[1], tokenizer.vocab_size).cuda(FLAGS.device_idx)
+        vocab_scores = torch.rand(target_ids.shape[0], target_ids.shape[1], tokenizer.vocab_size).cuda()
         result_dict = {}
         if target_ids is not None:
             result_dict['loss'] = nn.CrossEntropyLoss()(vocab_scores.view(-1, tokenizer.vocab_size),

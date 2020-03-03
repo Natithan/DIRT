@@ -40,8 +40,8 @@ def BERT_MLM_objective(target_ids, token_indexer):
     Produces a tensor of the same shape as target_ids, but with FLAGS.masking_fraction of the tokens replaces by a mask id
     '''
     masking_id = token_indexer.mask_token_id
-    condition = (torch.rand(target_ids.shape).cuda(FLAGS.device_idx) > FLAGS.masking_fraction) | \
-                (target_ids.cpu().apply_(lambda x: x in token_indexer.all_special_ids).cuda(FLAGS.device_idx).to(torch.bool))
+    condition = (torch.rand(target_ids.shape).cuda() > FLAGS.masking_fraction) | \
+                (target_ids.cpu().apply_(lambda x: x in token_indexer.all_special_ids).cuda().to(torch.bool))
     masked_ids = torch.where(condition,
                              target_ids,
                              masking_id * torch.ones_like(target_ids))

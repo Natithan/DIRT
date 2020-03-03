@@ -1,5 +1,11 @@
+import pickle
+from collections import Iterable
+import time
+import dill as dill
+import overrides
 from allennlp.data import Vocabulary, DatasetReader, Instance
 from allennlp.data.fields import ArrayField
+from pathlib2 import Path
 
 from constants import DECODER_START_TOKEN
 import os
@@ -67,7 +73,7 @@ class GutenbergReader(DatasetReader):
         test_dataset = self.read(os.path.join(FLAGS.data_folder, 'test'))
         val_dataset = self.read(os.path.join(FLAGS.data_folder, 'val'))
         vocab = Vocabulary.from_instances(train_dataset + val_dataset,
-                                          max_vocab_size=FLAGS.max_vocab_size)  # TODO fix vocab + openai tokenindexer coop: now vocab size is 2??
+                                          max_vocab_size=FLAGS.max_vocab_size)
         # for dataset in (train_dataset, test_dataset, val_dataset):
         #     for idx, instance in enumerate(dataset):
         #         instance.index_fields(vocab)
@@ -83,21 +89,24 @@ class GutenbergReader(DatasetReader):
         '''
         Returns a dictionary containing train, test and validation instance lists, as well as the vocab created from train and validation data
         '''
-        # blob_dir_path = Path('blobs')
-        # if not os.path.exists(blob_dir_path):
-        #     os.mkdir(blob_dir_path)
-        # maybe_mini = '_mini' if FLAGS.mini else ''
-        # this_blob_path = Path(blob_dir_path,f'{self.__class__.__name__}_data{maybe_mini}.pkl')
-        #
-        # if os.path.exists(this_blob_path):
-        #     with open(this_blob_path, 'rb') as f:
-        #         return pickle.load(f)
-        # else:
-        #     result = self._read_data_folders()
-        #     pickle.dump(result,open(this_blob_path, 'wb'))
-        #     return result
-        return self._read_data_folders()
-    # TODO get pickling to work for large data, and add option to not use pickle for small data
+        blob_dir_path = Path('blobs')
+        if not os.path.exists(blob_dir_path):
+            os.mkdir(blob_dir_path)
+        maybe_mini = '_mini' if FLAGS.mini else ''
+        pickle_names = [name + maybe_mini for name in ('train','test','val','vocab')]
+        if all([os.path.exists(Path(blob_dir_path,name)) for name in pickle_names]) and not FLAGS.fresh_data:
+            result = {}
+            for name in pickle_names:
+                with open(Path(blob_dir_path,name + maybe_mini), 'rb') as f:
+                    start = time.time()
+                    result[name] = pickle.load(f)
+                    print(f'Loaded {name} pickle in {time.time() - start:.1f} seconds')
+        else:
+            result = self._read_data_folders()
+            for name in result:
+                pickle.dump(result[name],open(Path(blob_dir_path,name + maybe_mini), 'wb'))
+        return result
+        # return self._read_data_folders()
     # def get_data_dict(self):
     #     '''
     #     Returns a dictionary containing train, test and validation instance lists, as well as the vocab created from train and validation data
@@ -115,3 +124,13 @@ class GutenbergReader(DatasetReader):
     #         result = self._read_data_folders()
     #         pickle.dump(result,open(this_blob_path, 'wb'))
     #         return result
+
+    def _instances_from_cache_file(self, cache_filename):
+        with open(cache_filename, 'rb') as cache_file:
+            instances = dill.load(cache_file)
+            for instance in instances:
+                yield instance
+
+    def _instances_to_cache_file(self, cache_filename, instances) -> None:
+        with open(cache_filename, 'wb') as cache_file:
+            dill.dump(instances, cache_file)

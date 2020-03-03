@@ -1,6 +1,10 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 import os
+
+import torch
+from torch import nn
+
 from models.wrappers import MLMModelWrapper, MODEL_MAPPING
 
 from pathlib import Path
@@ -28,12 +32,13 @@ def main(_):
     FLAGS.append_flags_into_file(flagfile)
 
     reader = GutenbergReader()
-    train_dataset, test_dataset, val_dataset, vocab = (reader.get_data_dict()[key] for key in
+    data_dict = reader.get_data_dict()
+    train_dataset, test_dataset, val_dataset, vocab = (data_dict[key] for key in
                                                        ('train', 'test', 'val', 'vocab'))
-    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],vocab) # TODO figure out why unfinetuned pretrained HF roberta works in sandbox, but not here
-    cuda_device = FLAGS.device_idx
-    model = model.cuda(cuda_device)
-
+    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],vocab)
+    device = torch.device(FLAGS.device_idx if torch.cuda.is_available() else "cpu")
+    model = nn.DataParallel(model)
+    model.to(device)
     optimizer = optim.Adam(model.parameters(),lr=10e-6)
 
     iterator = BasicIterator(batch_size=FLAGS.d_batch)
@@ -45,8 +50,7 @@ def main(_):
                       validation_dataset=val_dataset,
                       patience=FLAGS.patience,
                       num_epochs=FLAGS.num_epochs,
-                      serialization_dir=run_dir,
-                      cuda_device=cuda_device)
+                      serialization_dir=run_dir)
     trainer.train()
 
     model(test_dataset)

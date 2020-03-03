@@ -4,6 +4,7 @@ from allennlp.models import Model
 from typing import Dict, List
 
 from allennlp.data import TokenIndexer, TokenType, Token, Vocabulary
+from torch import nn
 
 from config import FLAGS, CONFIG_MAPPING, OBJECTIVE_MAPPING
 from models.model import FullModel
@@ -18,7 +19,6 @@ class MLMModelWrapper(Model):
         self.model = model(vocab)
         self.objective = OBJECTIVE_MAPPING[FLAGS.objective]
         self.token_indexer = TOKENIZER_MAPPING[FLAGS.model]
-
 
     def forward(self, input_ids):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
         new_input_dict = {}
@@ -80,10 +80,23 @@ class RobertaTokenizerWrapper(TokenIndexer):
     def pad_token_sequence(self, tokens: Dict[str, List[TokenType]], desired_num_tokens: Dict[str, int],
                            padding_lengths: Dict[str, int]) -> Dict[str, TokenType]:
         pass
-TOKENIZER_MAPPING = DefaultOrderedDict(lambda : RobertaTokenizer.from_pretrained(CONFIG_MAPPING['huggingface_baseline_encoder']),
+
+
+class DataParallelWrapper(nn.DataParallel):
+
+    def __init__(self, *args,**kwargs):
+        super().__init__(*args,**kwargs)
+
+    def get_parameters_for_histogram_tensorboard_logging(self):
+        return self.module.get_parameters_for_histogram_tensorboard_logging()
+
+
+
+TOKENIZER_MAPPING = DefaultOrderedDict(
+    lambda: RobertaTokenizer.from_pretrained(CONFIG_MAPPING['huggingface_baseline_encoder']),
     [
     ]
-)
+    )
 
 from models.dummy_models import RandomMLMModel, ConstantMLMModel
 
@@ -95,4 +108,3 @@ MODEL_MAPPING = OrderedDict(
         ("constant", ConstantMLMModel,),
     ]
 )
-

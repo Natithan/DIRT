@@ -5,7 +5,7 @@ import os
 import torch
 from torch import nn
 
-from models.wrappers import MLMModelWrapper, MODEL_MAPPING
+from models.wrappers import MLMModelWrapper, MODEL_MAPPING, DataParallelWrapper
 
 from pathlib import Path
 from allennlp.data.iterators import BasicIterator
@@ -19,7 +19,6 @@ from text_input_pipeline import GutenbergReader
 
 
 def main(_):
-
     # Create folders and files to store results and configs
     run_dir = Path(FLAGS.model_folder, FLAGS.model, FLAGS.run_name)
     if not os.path.exists(run_dir):
@@ -35,8 +34,10 @@ def main(_):
     data_dict = reader.get_data_dict()
     train_dataset, test_dataset, val_dataset, vocab = (data_dict[key] for key in
                                                        ('train', 'test', 'val', 'vocab'))
-    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],vocab) #TODO change DataParallel to work nicely with ALlenNLP Module inheritance (Maybe MyDataParallel)
-    optimizer = optim.Adam(model.parameters(),lr=10e-6)
+    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],
+                            vocab)  # TODO change DataParallel to work nicely with ALlenNLP Module inheritance (Maybe MyDataParallel)
+    model = DataParallelWrapper(model, device_ids=[0, 1, 2, 3])
+    optimizer = optim.Adam(model.parameters(), lr=10e-6)
 
     iterator = BasicIterator(batch_size=FLAGS.d_batch)
     iterator.index_with(vocab)

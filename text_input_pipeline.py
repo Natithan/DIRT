@@ -97,9 +97,9 @@ class GutenbergReader(DatasetReader):
         if all([os.path.exists(Path(blob_dir_path,name)) for name in pickle_names]) and not FLAGS.fresh_data:
             result = {}
             for name in pickle_names:
-                with open(Path(blob_dir_path,name + maybe_mini), 'rb') as f:
+                with open(Path(blob_dir_path,name), 'rb') as f:
                     start = time.time()
-                    result[name] = pickle.load(f)
+                    result[name.replace(maybe_mini,'')] = pickle.load(f)
                     print(f'Loaded {name} pickle in {time.time() - start:.1f} seconds')
         else:
             result = self._read_data_folders()

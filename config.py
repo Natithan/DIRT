@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # TODO maybe make multiple configs? Or maybe keep model hyperparams in some config, and use FLAGS just for folder names etc
 FLAGS = flags.FLAGS
-flags.DEFINE_integer("d_batch", 20, "Batch size")
+flags.DEFINE_integer("d_batch", 8, "Batch size")
 flags.DEFINE_string("model", "my_baseline_encoder", "Name of the model to use (see MODEL_MAPPING)")
 flags.DEFINE_string("objective", "simple_mlm",
                     "Name of the denoising objective to use (see OBJECTIVE_MAPPING)")

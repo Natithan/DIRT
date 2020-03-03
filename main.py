@@ -35,10 +35,7 @@ def main(_):
     data_dict = reader.get_data_dict()
     train_dataset, test_dataset, val_dataset, vocab = (data_dict[key] for key in
                                                        ('train', 'test', 'val', 'vocab'))
-    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],vocab)
-    device = torch.device(FLAGS.device_idx if torch.cuda.is_available() else "cpu")
-    model = nn.DataParallel(model)
-    model.to(device)
+    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],vocab) #TODO change DataParallel to work nicely with ALlenNLP Module inheritance (Maybe MyDataParallel)
     optimizer = optim.Adam(model.parameters(),lr=10e-6)
 
     iterator = BasicIterator(batch_size=FLAGS.d_batch)
@@ -50,7 +47,8 @@ def main(_):
                       validation_dataset=val_dataset,
                       patience=FLAGS.patience,
                       num_epochs=FLAGS.num_epochs,
-                      serialization_dir=run_dir)
+                      serialization_dir=run_dir,
+                      cuda_device=model.device_ids)
     trainer.train()
 
     model(test_dataset)

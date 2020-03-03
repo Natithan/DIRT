@@ -35,8 +35,7 @@ def main(_):
     train_dataset, test_dataset, val_dataset, vocab = (data_dict[key] for key in
                                                        ('train', 'test', 'val', 'vocab'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],
-                            vocab)  # TODO change DataParallel to work nicely with ALlenNLP Module inheritance (Maybe MyDataParallel)
-    model = DataParallelWrapper(model, device_ids=[0, 1, 2, 3])
+                            vocab)
     optimizer = optim.Adam(model.parameters(), lr=10e-6)
 
     iterator = BasicIterator(batch_size=FLAGS.d_batch)
@@ -49,7 +48,7 @@ def main(_):
                       patience=FLAGS.patience,
                       num_epochs=FLAGS.num_epochs,
                       serialization_dir=run_dir,
-                      cuda_device=model.device_ids)
+                      cuda_device=[0, 1, 2, 3]) #TODO Fix GPU parallelism with built-in stuff from AllenNLP, fix TypeError: Broadcast function not implemented for CPU tensors
     trainer.train()
 
     model(test_dataset)

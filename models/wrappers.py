@@ -82,16 +82,6 @@ class RobertaTokenizerWrapper(TokenIndexer):
         pass
 
 
-class DataParallelWrapper(nn.DataParallel):
-
-    def __init__(self, *args,**kwargs):
-        super().__init__(*args,**kwargs)
-
-    def get_parameters_for_histogram_tensorboard_logging(self):
-        return self.module.get_parameters_for_histogram_tensorboard_logging()
-
-
-
 TOKENIZER_MAPPING = DefaultOrderedDict(
     lambda: RobertaTokenizer.from_pretrained(CONFIG_MAPPING['huggingface_baseline_encoder']),
     [

@@ -5,7 +5,7 @@ import os
 import torch
 from torch import nn
 
-from models.wrappers import MLMModelWrapper, MODEL_MAPPING, DataParallelWrapper
+from models.wrappers import MLMModelWrapper, MODEL_MAPPING
 
 from pathlib import Path
 from allennlp.data.iterators import BasicIterator
@@ -36,10 +36,11 @@ def main(_):
                                                        ('train', 'test', 'val', 'vocab'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],
                             vocab)
+    model.cuda()
     optimizer = optim.Adam(model.parameters(), lr=10e-6)
 
     iterator = BasicIterator(batch_size=FLAGS.d_batch)
-    iterator.index_with(vocab)
+    iterator.index_with(vocab)  # TODO fix checkpointing within one epoch
     trainer = Trainer(model=model,  # TODO make sure I can pickup training from interrupted process without errors
                       optimizer=optimizer,
                       iterator=iterator,
@@ -48,7 +49,8 @@ def main(_):
                       patience=FLAGS.patience,
                       num_epochs=FLAGS.num_epochs,
                       serialization_dir=run_dir,
-                      cuda_device=[0, 1, 2, 3]) #TODO Fix GPU parallelism with built-in stuff from AllenNLP, fix TypeError: Broadcast function not implemented for CPU tensors
+                      cuda_device=FLAGS.device_idxs,
+                      model_save_interval=FLAGS.model_save_interval)
     trainer.train()
 
     model(test_dataset)

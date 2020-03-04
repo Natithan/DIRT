@@ -4,13 +4,10 @@ from allennlp.models import Model
 from typing import Dict, List
 
 from allennlp.data import TokenIndexer, TokenType, Token, Vocabulary
-from torch import nn
 
-from config import FLAGS, CONFIG_MAPPING, OBJECTIVE_MAPPING
+from config import FLAGS, CONFIG_MAPPING, OBJECTIVE_MAPPING, TOKENIZER_MAPPING
 from models.model import FullModel
 from transformers import RobertaForMaskedLM, RobertaTokenizer
-
-from util import DefaultOrderedDict
 
 
 class MLMModelWrapper(Model):
@@ -81,12 +78,6 @@ class RobertaTokenizerWrapper(TokenIndexer):
                            padding_lengths: Dict[str, int]) -> Dict[str, TokenType]:
         pass
 
-
-TOKENIZER_MAPPING = DefaultOrderedDict(
-    lambda: RobertaTokenizer.from_pretrained(CONFIG_MAPPING['huggingface_baseline_encoder']),
-    [
-    ]
-    )
 
 from models.dummy_models import RandomMLMModel, ConstantMLMModel
 

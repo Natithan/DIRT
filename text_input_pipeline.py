@@ -9,10 +9,8 @@ from pathlib2 import Path
 
 from constants import DECODER_START_TOKEN
 import os
-from config import FLAGS
+from config import FLAGS, TOKENIZER_MAPPING
 import numpy as np
-
-from models.wrappers import TOKENIZER_MAPPING
 
 
 def add_custom_tokens(vocab):
@@ -73,7 +71,7 @@ class GutenbergReader(DatasetReader):
         test_dataset = self.read(os.path.join(FLAGS.data_folder, 'test'))
         val_dataset = self.read(os.path.join(FLAGS.data_folder, 'val'))
         vocab = Vocabulary.from_instances(train_dataset + val_dataset,
-                                          max_vocab_size=FLAGS.max_vocab_size)
+                                          max_vocab_size=TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
         # for dataset in (train_dataset, test_dataset, val_dataset):
         #     for idx, instance in enumerate(dataset):
         #         instance.index_fields(vocab)

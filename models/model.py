@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch import tensor
-from config import FLAGS
+from config import FLAGS, TOKENIZER_MAPPING
 from constants import DECODER_START_TOKEN
 
 
@@ -48,13 +48,13 @@ class FullModel(Model):
         # ENCODING
         embedded_inputs = self.embedder(masked_ids)
         encoded, _ = self.encoder(MyDropout()(embedded_inputs), padding_mask)
-
+        result_dict = {}
         # DECODING
         if FLAGS.use_decoder: #TODO maybe add some assert that checks if targets (if any) are in the correct format
             if self.teacher_forcing:
                 # With teacher forcing, we can parallelize decoding using a causal mask
                 shifted_target_tokens = torch.cat(
-                    (tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]] * d_batch).to(), #TODO change this to not use self.vocab, but directly an id
+                    (tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]] * d_batch).cuda(), #TODO change this to not use self.vocab, but directly an id
                      target_ids[:, :-1]),
                     dim=1)  # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
                 vocab_scores = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded, padding_mask)
@@ -67,7 +67,7 @@ class FullModel(Model):
             _, output_idxs = torch.max(vocab_scores,dim=-1)
 
         if targets is not None:
-            vocab_scores_contiguous = vocab_scores.contiguous().view(-1, FLAGS.max_vocab_size)
+            vocab_scores_contiguous = vocab_scores.contiguous().view(-1, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
             result_dict['loss'] = nn.CrossEntropyLoss()(vocab_scores_contiguous, targets) #TODO add weighting here to only look at masked indices
         result_dict['output_idxs'] = output_idxs
 
@@ -76,7 +76,7 @@ class FullModel(Model):
     def beam_decode(self, d_batch, encoded, max_target_seq_length, padding_mask): #TODO make it so that this also outputs vocab probabilities, to allow training without teacher forcing
         k = FLAGS.beam_width
         out_seq_length = max_target_seq_length + 1  # To allow start token in the output
-        output_idxs = torch.zeros(d_batch, out_seq_length, k, dtype=torch.long).to()
+        output_idxs = torch.zeros(d_batch, out_seq_length, k, dtype=torch.long).cuda()
         output_idxs[:, 0, :] = self.vocab.get_token_index(DECODER_START_TOKEN) #TODO change this to not use self.vocab, but directly an id
         output_probs = torch.ones(d_batch, k, dtype=torch.long).to(
             FLAGS.device_idx)  # starting probability for product of probabilities along path
@@ -137,9 +137,9 @@ class Predictor(nn.Module):
     """
     def __init__(self):
         super().__init__()
-        self.ffn = nn.Linear(FLAGS.d_hidden,FLAGS.max_vocab_size) # TODO change this to using token_indexer vocab size?
+        self.ffn = nn.Linear(FLAGS.d_hidden,TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
     def forward(self,hidden_states):
-            self.ffn(
+            return self.ffn(
                 MyDropout()(hidden_states)
             ) # TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights with output_embeddings.weight = input_embeddings.weight
 
@@ -350,7 +350,7 @@ class AlbertEmbedder(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.idx_to_embedding = nn.Embedding(FLAGS.max_vocab_size, FLAGS.d_emb)
+        self.idx_to_embedding = nn.Embedding(TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size, FLAGS.d_emb)
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
 
     def forward(self, idxs):

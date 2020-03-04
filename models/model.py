@@ -64,12 +64,11 @@ class FullModel(Model):
                 result_dict['output_idxs'] = output_idxs
         else:
             vocab_scores = self.predictor(encoded) #TODO finish setting up encoder-only baseline
-            _, output_idxs = torch.max(vocab_scores,dim=-1)
 
         if targets is not None:
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
             result_dict['loss'] = nn.CrossEntropyLoss()(vocab_scores_contiguous, targets) #TODO add weighting here to only look at masked indices
-        result_dict['output_idxs'] = output_idxs
+        result_dict['vocab_scores'] = vocab_scores
 
         return result_dict  # Dictionary format for AllenNLP trainer loop
 

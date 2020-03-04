@@ -22,7 +22,7 @@ flags.DEFINE_string("objective", "simple_mlm",
 flags.DEFINE_integer("d_emb", 72, "Size of token encodings before contextualization")
 flags.DEFINE_integer("d_hidden", 768, "Size of token encodings in hidden layers (contextualized)")
 flags.DEFINE_integer("d_ff", 3072, "Number of hidden units in feedforward parts of attention blocks")
-flags.DEFINE_integer("model_save_interval", 300, "Number of seconds after which a model will be checkpointed, even within an epoch")
+flags.DEFINE_integer("model_save_interval", 60, "Number of seconds after which a model will be checkpointed, even within an epoch")
 flags.DEFINE_integer("nb_heads", 8, "Number of attention heads")
 flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(8000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")

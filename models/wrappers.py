@@ -22,7 +22,9 @@ class MLMModelWrapper(Model):
         new_input_dict['target_ids'] = input_ids
         new_input_dict['padding_mask'] = input_ids != self.token_indexer.pad_token_id
         new_input_dict['masked_ids'] = self.objective(input_ids, self.token_indexer)
-        return self.model(**new_input_dict)
+        result_dict = self.model(**new_input_dict)
+        result_dict['mask'] = (new_input_dict['masked_ids'] == self.token_indexer.mask_token_id)
+        return result_dict
 
 
 class RobertaMLMWrapper(Model):
@@ -46,9 +48,9 @@ class RobertaMLMWrapper(Model):
         result_dict = {}
         if target_ids is not None:
             result_dict['loss'] = tuple_result[0]  # Add more parts of output when needed :P
-            result_dict['vocab_logits'] = tuple_result[1]
+            result_dict['vocab_scores'] = tuple_result[1]
         else:
-            result_dict['vocab_logits'] = tuple_result[0]
+            result_dict['vocab_scores'] = tuple_result[0]
         return result_dict
 
 

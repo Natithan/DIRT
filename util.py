@@ -12,12 +12,14 @@ def get_gpus_with_enough_memory(minimum_memory):
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >tmp_GPUs_free_mem')
     memory_available = [int(x.split()[2]) for x in open('tmp_GPUs_free_mem', 'r').readlines()]
     used_gpus = np.argwhere(np.array(memory_available) > minimum_memory).squeeze().tolist()
+    if not isinstance(used_gpus, Iterable):
+        used_gpus = [used_gpus]
     print(f"Using GPUs: {used_gpus}")
     return used_gpus
 
 
 
-from collections import OrderedDict, Callable
+from collections import OrderedDict, Callable, Iterable
 
 
 class DefaultOrderedDict(OrderedDict):

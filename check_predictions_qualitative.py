@@ -12,14 +12,17 @@ from config import FLAGS
 from pathlib import Path
 
 from text_input_pipeline import GutenbergReader
+from util import get_gpus_with_enough_memory
 
 
 def main(_):
+    FLAGS.device_idxs = get_gpus_with_enough_memory(8000) #Hack to not use flagvalue of og model when pertaining to GPU usage
     reader = GutenbergReader()
     data_dict = reader.get_data_dict()
     train_dataset, test_dataset, val_dataset, vocab = (data_dict[key] for key in
                                                        ('train', 'test', 'val', 'vocab'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model], vocab)
+    model = model.cuda(f'cuda:{FLAGS.device_idxs[0]}') #TODO fix RuntimeError: cublas runtime error : resource allocation failed at /pytorch/aten/src/THC/THCGeneral.cpp:216 THCudaCheck FAIL file=/pytorch/aten/src/THC/THCCachingHostAllocator.cpp line=278 error=700 : an illegal memory access was encountered
 
     best_val_run_path = Path(latest_run_dir, 'best.th')
     model_states = [Path(latest_run_dir, m) for m in os.listdir(latest_run_dir) if 'model_state_epoch_' in m]
@@ -28,7 +31,7 @@ def main(_):
     for trained_model_path in (best_val_run_path, latest_run_path):
         print(f'Testing {trained_model_path}')
         model.load_state_dict(torch.load(trained_model_path))
-        model = model.cuda()
+        model = model.cuda(f'cuda:{FLAGS.device_idxs[0]}')
         model.eval()  # Set to eval mode
         for name, dataset in zip(('Train', 'Test', 'Val'), (train_dataset, test_dataset, val_dataset)):
             print(f'Testing {name}')

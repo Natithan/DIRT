@@ -14,7 +14,6 @@ def get_gpus_with_enough_memory(minimum_memory):
     used_gpus = np.argwhere(np.array(memory_available) > minimum_memory).squeeze().tolist()
     if not isinstance(used_gpus, Iterable):
         used_gpus = [used_gpus]
-    print(f"Using GPUs: {used_gpus}")
     return used_gpus
 
 

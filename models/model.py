@@ -38,12 +38,12 @@ class FullModel(Model):
         vocab_scores = self.predictor(decoded)
         return vocab_scores
 
-    def forward(self, masked_ids, padding_mask, target_ids=None):
+    def forward(self, masked_ids, padding_mask, masked_lm_labels=None):
         d_batch = masked_ids.shape[
             0]  # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
         max_target_seq_length = int(FLAGS.max_seq_length * FLAGS.masking_fraction * 2 + 1) if (
-                    target_ids is None) else target_ids.shape[-1]  # Longest length if no adjacent masks
-        targets = self.process_targets_for_loss(target_ids, max_target_seq_length)
+                masked_lm_labels is None) else masked_lm_labels.shape[-1]  # Longest length if no adjacent masks
+        targets = self.process_targets_for_loss(masked_lm_labels, max_target_seq_length)
 
         # ENCODING
         embedded_inputs = self.embedder(masked_ids)
@@ -54,8 +54,8 @@ class FullModel(Model):
             if self.teacher_forcing:
                 # With teacher forcing, we can parallelize decoding using a causal mask
                 shifted_target_tokens = torch.cat(
-                    (tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]] * d_batch).cuda(), #TODO change this to not use self.vocab, but directly an id
-                     target_ids[:, :-1]),
+                    (tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]] * d_batch).cuda(),  #TODO change this to not use self.vocab, but directly an id
+                     masked_lm_labels[:, :-1]),
                     dim=1)  # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
                 vocab_scores = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded, padding_mask)
                 _, output_idxs = torch.max(vocab_scores,dim=-1)
@@ -67,7 +67,7 @@ class FullModel(Model):
 
         if targets is not None:
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
-            result_dict['loss'] = nn.CrossEntropyLoss()(vocab_scores_contiguous, targets) #TODO add weighting here to only look at masked indices
+            result_dict['loss'] = nn.CrossEntropyLoss()(vocab_scores_contiguous, targets) #TODO add weighting here to only look at masked indices Maybe done already with -100
         result_dict['vocab_scores'] = vocab_scores
 
         return result_dict  # Dictionary format for AllenNLP trainer loop

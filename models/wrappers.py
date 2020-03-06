@@ -1,12 +1,12 @@
 from collections import OrderedDict
 
+import torch
 from allennlp.models import Model
 from typing import Dict, List
 
 from allennlp.data import TokenIndexer, TokenType, Token, Vocabulary
 
 from config import FLAGS, CONFIG_MAPPING, OBJECTIVE_MAPPING, TOKENIZER_MAPPING
-from models.model import FullModel
 from transformers import RobertaForMaskedLM, RobertaTokenizer
 
 
@@ -19,9 +19,9 @@ class MLMModelWrapper(Model):
 
     def forward(self, input_ids):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
         new_input_dict = {}
-        new_input_dict['target_ids'] = input_ids
         new_input_dict['padding_mask'] = input_ids != self.token_indexer.pad_token_id
         new_input_dict['masked_ids'] = self.objective(input_ids, self.token_indexer)
+        new_input_dict['masked_lm_labels'] = torch.where(new_input_dict['masked_ids'] == self.token_indexer.mask_token_id,input_ids,torch.ones_like(input_ids)*(-100))
         result_dict = self.model(**new_input_dict)
         result_dict['mask'] = (new_input_dict['masked_ids'] == self.token_indexer.mask_token_id)
         return result_dict
@@ -43,10 +43,10 @@ class RobertaMLMWrapper(Model):
                 config_name)
             self.model = model_class(config)
 
-    def forward(self, target_ids, masked_ids, padding_mask):
-        tuple_result = self.model(input_ids=masked_ids, masked_lm_labels=target_ids, attention_mask=padding_mask)
+    def forward(self, masked_lm_labels, masked_ids, padding_mask):
+        tuple_result = self.model(input_ids=masked_ids, masked_lm_labels=masked_lm_labels, attention_mask=padding_mask)
         result_dict = {}
-        if target_ids is not None:
+        if masked_lm_labels is not None:
             result_dict['loss'] = tuple_result[0]  # Add more parts of output when needed :P
             result_dict['vocab_scores'] = tuple_result[1]
         else:
@@ -83,6 +83,7 @@ class RobertaTokenizerWrapper(TokenIndexer):
 
 from models.dummy_models import RandomMLMModel, ConstantMLMModel
 
+from models.model import FullModel
 MODEL_MAPPING = OrderedDict(
     [
         ("huggingface_baseline_encoder", RobertaMLMWrapper,),

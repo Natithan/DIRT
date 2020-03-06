@@ -37,7 +37,7 @@ def t5_denoise_spans_objective(
 
 def BERT_MLM_objective(target_ids, token_indexer):
     '''
-    Produces a tensor of the same shape as target_ids, but with FLAGS.masking_fraction of the tokens replaces by a mask id
+    Produces a tensor of the same shape as masked_lm_labels, but with FLAGS.masking_fraction of the tokens replaces by a mask id
     '''
     masking_id = token_indexer.mask_token_id
     condition = (torch.rand(target_ids.shape).cuda() > FLAGS.masking_fraction) | \

@@ -36,7 +36,8 @@ def main(_):
                                                        ('train', 'test', 'val', 'vocab'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],
                             vocab)
-    model.cuda()
+    model_device = f'cuda:{FLAGS.device_idxs[0]}' if len(FLAGS.device_idxs) != 0 else 'cpu'
+    model.cuda(model_device)
     optimizer = optim.Adam(model.parameters(), lr=10e-6)
 
     iterator = BasicIterator(batch_size=FLAGS.d_batch)
@@ -50,7 +51,8 @@ def main(_):
                       num_epochs=FLAGS.num_epochs,
                       serialization_dir=run_dir,
                       cuda_device=FLAGS.device_idxs,
-                      model_save_interval=FLAGS.model_save_interval)
+                      model_save_interval=FLAGS.model_save_interval,
+                      num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep)
     trainer.train()
 
     model(test_dataset)

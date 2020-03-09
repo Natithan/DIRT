@@ -19,7 +19,7 @@ class FullModel(Model):
         super().__init__(vocab)
         self.embedder = AlbertEmbedder()
         self.encoder = MySequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
-        self.decoder = MySequential(*[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
+        self.decoder = MySequential(*[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)]) if FLAGS.use_decoder else torch.nn.Sequential()
         self.predictor = Predictor()
         self.teacher_forcing = do_teacher_forcing
 

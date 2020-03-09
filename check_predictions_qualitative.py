@@ -7,6 +7,7 @@ import sys
 
 import torch
 from absl import app
+import numpy as np
 
 from config import FLAGS
 from pathlib import Path
@@ -40,22 +41,35 @@ def main(_):
         model.eval()  # Set to eval mode
         for name, dataset in zip(('Train', 'Test', 'Val'), (train_dataset, test_dataset, val_dataset)):
             print(f'Testing {name}')
-            instances = random.sample(dataset, 3)
-            prediction = model.forward_on_instances(
+            instances = random.sample(dataset, 1)
+            predictions = model.forward_on_instances(
                 instances)
             input_texts = [tokens_to_mask_aware_text(model.token_indexer,
                                                      model.token_indexer.convert_ids_to_tokens(
                                                          instances[batch_sample].fields['input_ids'].array),
-                                                     prediction[batch_sample]['mask'])
-                           for batch_sample in range(len(prediction))]
+                                                     predictions[batch_sample]['mask'])
+                           for batch_sample in range(len(predictions))]
+            input_ids = torch.cat([instance.as_tensor_dict()['input_ids'][None,:] for instance in instances]).numpy()
+            prediction_ids = np.vstack([pred['vocab_scores'].argmax(1)[None,:] for pred in predictions])
+            mask = np.vstack([predictions[batch_sample]['mask'] for batch_sample in range(len(predictions))])
+            filled_in_predictions = np.where(mask,
+                                               prediction_ids,
+                                               input_ids)
             predicted_texts = [tokens_to_mask_aware_text(model.token_indexer,
                                                          model.token_indexer.convert_ids_to_tokens(
-                                                             prediction[batch_sample]['vocab_scores'].argmax(1)),
-                                                         prediction[batch_sample]['mask'])
-                               for batch_sample in range(len(prediction))]
-            for input_text, predicted_text in zip(input_texts, predicted_texts):
+                                                             predictions[batch_sample]['vocab_scores'].argmax(1)),
+                                                         predictions[batch_sample]['mask'])
+                               for batch_sample in range(len(predictions))]
+
+            filled_in_predicted_texts = [tokens_to_mask_aware_text(model.token_indexer,
+                                                         model.token_indexer.convert_ids_to_tokens(
+                                                             filled_in_predictions[batch_sample]),
+                                                         predictions[batch_sample]['mask'])
+                               for batch_sample in range(len(predictions))]
+            for input_text, predicted_text, filled_in_predicted_text in zip(input_texts, predicted_texts, filled_in_predicted_texts):
                 print(f'Input: {input_text}')
-                print(f'Prediction: {predicted_text}')
+                print(f'Filled in Prediction: {filled_in_predicted_text}')
+                print(f'All output: {predicted_text}')
                 print(' ')
 
 

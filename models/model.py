@@ -1,6 +1,8 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 
+from operator import itemgetter
+
 import math
 
 from allennlp.models import Model
@@ -23,6 +25,10 @@ class FullModel(Model):
             *[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)]) if FLAGS.use_decoder else torch.nn.Sequential()
         self.predictor = Predictor()
         self.teacher_forcing = do_teacher_forcing
+        self.metrics_dict = {}
+
+    def get_metrics(self, **kwargs):
+        return self.metrics_dict
 
     def process_targets_for_loss(self, target_tokens,
                                  max_target_seq_length):
@@ -35,9 +41,9 @@ class FullModel(Model):
 
     def decode_idxs_to_probabilities(self, decoder_input_token_idxs, encoded, padding_mask):
         decoder_input_embeddings, _ = self.embedder(decoder_input_token_idxs)
-        decoded, _, _ = self.decoder(nn.Dropout()(decoder_input_embeddings), encoded, padding_mask)
+        decoded, _, _, cum_layer_loss = self.decoder(nn.Dropout()(decoder_input_embeddings), encoded, padding_mask)
         vocab_scores = self.predictor(decoded)
-        return vocab_scores
+        return vocab_scores, cum_layer_loss
 
     def forward(self, masked_ids, padding_mask, masked_lm_labels=None):
         d_batch = masked_ids.shape[
@@ -48,7 +54,8 @@ class FullModel(Model):
 
         # ENCODING
         embedded_inputs = self.embedder(masked_ids)
-        encoded, _ = self.encoder(MyDropout()(embedded_inputs), padding_mask)
+        encoded, _, cum_layer_loss = self.encoder(MyDropout()(embedded_inputs), padding_mask)
+        cum_layer_loss = cum_layer_loss/FLAGS.nb_encoder_layers #Normalize layer loss by number of times it is calculated
         result_dict = {}
         # DECODING
         if FLAGS.use_decoder:  # TODO maybe add some assert that checks if targets (if any) are in the correct format
@@ -59,7 +66,9 @@ class FullModel(Model):
                      # TODO change this to not use self.vocab, but directly an id
                      masked_lm_labels[:, :-1]),
                     dim=1)  # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
-                vocab_scores = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded, padding_mask)
+                vocab_scores, cum_decoder_layer_loss = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded, padding_mask)
+                cum_decoder_layer_loss /= 2*FLAGS.nb_decoder_layers #Normalize layer loss by number of times it is calculated
+                cum_layer_loss = (cum_layer_loss + cum_decoder_layer_loss)/2
                 _, output_idxs = torch.max(vocab_scores, dim=-1)
             else:
                 vocab_scores, output_idxs = self.beam_decode(d_batch, encoded, max_target_seq_length, padding_mask)
@@ -69,8 +78,12 @@ class FullModel(Model):
 
         if targets is not None:
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
-            result_dict['loss'] = nn.CrossEntropyLoss()(vocab_scores_contiguous,
-                                                        targets)  # TODO add weighting here to only look at masked indices Maybe done already with -100
+            MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
+                                                        targets)
+            result_dict['loss'] = FLAGS.DIR_loss_fraction*cum_layer_loss + (1-FLAGS.DIR_loss_fraction)*MLM_loss
+
+            self.metrics_dict['crossentropy_loss'] = MLM_loss
+            self.metrics_dict['DIR_loss'] = cum_layer_loss
         result_dict['vocab_scores'] = vocab_scores
 
         return result_dict  # Dictionary format for AllenNLP trainer loop
@@ -150,7 +163,8 @@ class Predictor(nn.Module):
         self.decoder = nn.Linear(FLAGS.d_hidden, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
 
     def forward(self, hidden_states):
-        return self.decoder(self.LayerNorm(self.dense(hidden_states)))  # TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights with output_embeddings.weight = input_embeddings.weight
+        return self.decoder(self.LayerNorm(self.dense(
+            hidden_states)))  # TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights with output_embeddings.weight = input_embeddings.weight
 
 
 class MyDropout(nn.Dropout):
@@ -183,10 +197,12 @@ class EncoderBlock(nn.Module):
         # Dropout after every feedforward layer
         self.feedforward = FeedForwardBlock()
 
-    def forward(self, input, padding_mask):
-        att_out = self.multihead_attention(input, input, padding_mask)
+    def forward(self, input, padding_mask,
+                cum_layer_loss=0):  # TODO add cum_layer_loss to decoder if I decide to start using it
+        att_out, layer_loss = itemgetter('activations', 'layer_loss')(
+            self.multihead_attention(input, input, padding_mask))
         ff_out = self.feedforward(att_out)
-        return ff_out, padding_mask
+        return ff_out, padding_mask, layer_loss + cum_layer_loss
 
 
 class MySequential(nn.Sequential):
@@ -212,10 +228,27 @@ class DecoderBlock(nn.Module):
         self.feedforward = FeedForwardBlock()
 
     def forward(self, output, original_encoded_input, padding_mask):
-        self_att_out = self.self_attention(query=output, values=output) # Include skip-connection and layer normalization
-        att_out = self.attention(query=self_att_out, values=original_encoded_input, padding_mask=padding_mask)
+        self_att_out, layer_loss_1 = itemgetter('activations', 'layer_loss')(self.self_attention(query=output,
+                                           values=output))  # Include skip-connection and layer normalization
+        att_out, layer_loss_2 = itemgetter('activations', 'layer_loss')(self.attention(query=self_att_out, values=original_encoded_input, padding_mask=padding_mask))
         ff_out = self.feedforward(att_out)
-        return ff_out, original_encoded_input, padding_mask
+        return ff_out, original_encoded_input, padding_mask, layer_loss_1 + layer_loss_2
+
+
+class Anticipation(nn.Module): #TODO count parameters, maybe try with fewer layers
+    def __init__(self):
+        super().__init__()
+        self.regressor = nn.Linear(3 * FLAGS.max_seq_length, FLAGS.max_seq_length)
+
+    def forward(self, projected_q, projected_k, projected_v, original_query):
+        mask = (torch.rand(projected_q.shape[1]) > FLAGS.masking_fraction).cuda(projected_q.device) # Same mask for items in batch
+        extended_mask = torch.cat([mask[None, :, None] for _ in range(3)], dim=1)
+        anticipation_input = torch.cat((projected_q, projected_v, projected_k), dim=1)
+        masked_anticipation_input = anticipation_input * extended_mask
+        predicted_query = self.regressor(masked_anticipation_input.permute(0, 2, 1)).permute(0, 2, 1)
+        loss = torch.mean((((original_query - predicted_query) * ~mask[None, :,
+                                                                  None]) ** 2))  # MSE loss only looking at masked, to-predict sequence elements
+        return loss
 
 
 class MultiHeadAttention(nn.Module):
@@ -234,6 +267,7 @@ class MultiHeadAttention(nn.Module):
         self.use_causal_mask = use_causal_mask
         self.relative_attention_bias = nn.Embedding(FLAGS.relative_attention_num_buckets, FLAGS.nb_heads)
         self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_hidden)
+        self.anticipation = Anticipation()
 
     def get_attention_mask(self, padding_mask, d_batch, query_length, value_length):
         """
@@ -257,6 +291,7 @@ class MultiHeadAttention(nn.Module):
 
     def forward(self, query, values,
                 padding_mask=None):  # Padding mask to make sure we don't attend to padded positions
+        result_dict = {}
         d_batch = query.shape[0]
         q = self.project_q(query)
         k = self.project_k(values)
@@ -289,7 +324,10 @@ class MultiHeadAttention(nn.Module):
                                            v_multi_parts)  # [d_batch*num_heads,query_length, d_head_hidden] from [d_batch*num_heads, query_length, value_length] x [d_batch*num_heads,value_length, d_head_hidden]
         att_output = att_output_multi_parts.contiguous().view(d_batch, query_length, FLAGS.d_hidden)
         att_output = self.project_o(att_output)
-        return self.LayerNorm(att_output + MyDropout()(query))  # Include skip-connection
+        result_dict['activations'] = self.LayerNorm(att_output + MyDropout()(query))  # Include skip-connection
+
+        result_dict['layer_loss'] = self.anticipation(q, k, v, query) if FLAGS.use_DIR else 0
+        return result_dict
 
     def select_pos_embeddings(self, query_length, value_length, d_batch):
         rel_pos_indices = tensor(

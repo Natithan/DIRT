@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 # TODO maybe make multiple configs? Or maybe keep model hyperparams in some config, and use FLAGS just for folder names etc
 FLAGS = flags.FLAGS
 flags.DEFINE_integer("d_batch", 8, "Batch size")
-flags.DEFINE_string("model", "my_baseline_encoder", "Name of the model to use (see MODEL_MAPPING)")
+flags.DEFINE_string("model", "my_model", "Name of the model to use (see MODEL_MAPPING)")
+flags.DEFINE_bool("use_DIR",False,"Whether to use distributed internal regression to create additional losses")
+flags.DEFINE_float("DIR_loss_fraction",0.95,"Fraction of the total loss that the distributed regression loss accounts for")
 flags.DEFINE_string("tokenizer", "", "Which tokenizer to use. Currently everything defaults to RobertaTokenizer :P")
 flags.DEFINE_string("objective", "simple_mlm",
                     "Name of the denoising objective to use (see OBJECTIVE_MAPPING)")

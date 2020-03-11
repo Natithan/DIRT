@@ -87,7 +87,7 @@ from models.model import FullModel
 MODEL_MAPPING = OrderedDict(
     [
         ("huggingface_baseline_encoder", RobertaMLMWrapper,),
-        ("my_baseline_encoder", FullModel,),
+        ("my_model", FullModel,),
         ("random", RandomMLMModel,),
         ("constant", ConstantMLMModel,),
     ]

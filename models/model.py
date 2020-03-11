@@ -145,12 +145,12 @@ class Predictor(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.ffn = nn.Linear(FLAGS.d_hidden, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
+        self.dense = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
+        self.LayerNorm = nn.LayerNorm(FLAGS.d_hidden)
+        self.decoder = nn.Linear(FLAGS.d_hidden, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
 
     def forward(self, hidden_states):
-        return self.ffn(
-            MyDropout()(hidden_states)
-        )  # TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights with output_embeddings.weight = input_embeddings.weight
+        return self.decoder(self.LayerNorm(self.dense(hidden_states)))  # TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights with output_embeddings.weight = input_embeddings.weight
 
 
 class MyDropout(nn.Dropout):

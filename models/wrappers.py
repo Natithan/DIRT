@@ -21,10 +21,15 @@ class MLMModelWrapper(Model):
         new_input_dict = {}
         new_input_dict['padding_mask'] = input_ids != self.token_indexer.pad_token_id
         new_input_dict['masked_ids'] = self.objective(input_ids, self.token_indexer)
-        new_input_dict['masked_lm_labels'] = torch.where(new_input_dict['masked_ids'] == self.token_indexer.mask_token_id,input_ids,torch.ones_like(input_ids)*(-100))
+        new_input_dict['masked_lm_labels'] = torch.where(
+            new_input_dict['masked_ids'] == self.token_indexer.mask_token_id, input_ids,
+            torch.ones_like(input_ids) * (-100))
         result_dict = self.model(**new_input_dict)
         result_dict['mask'] = (new_input_dict['masked_ids'] == self.token_indexer.mask_token_id)
         return result_dict
+
+    def get_metrics(self, **kwargs):
+        return self.model.get_metrics()
 
 
 class RobertaMLMWrapper(Model):
@@ -34,6 +39,7 @@ class RobertaMLMWrapper(Model):
 
     def __init__(self, dummy_vocab):
         super().__init__(dummy_vocab)
+        self.metrics_dict = {}
         config_name = CONFIG_MAPPING[FLAGS.model]
         model_class = RobertaForMaskedLM
         if FLAGS.use_pretrained_weights:
@@ -48,10 +54,14 @@ class RobertaMLMWrapper(Model):
         result_dict = {}
         if masked_lm_labels is not None:
             result_dict['loss'] = tuple_result[0]  # Add more parts of output when needed :P
+            self.metrics_dict['crossentropy_loss'] = result_dict['loss'] #TODO figure out why crossentropy loss much more jittery than normal loss
             result_dict['vocab_scores'] = tuple_result[1]
         else:
             result_dict['vocab_scores'] = tuple_result[0]
         return result_dict
+
+    def get_metrics(self):
+        return self.metrics_dict
 
 
 class RobertaTokenizerWrapper(TokenIndexer):
@@ -84,10 +94,11 @@ class RobertaTokenizerWrapper(TokenIndexer):
 from models.dummy_models import RandomMLMModel, ConstantMLMModel
 
 from models.model import FullModel
+
 MODEL_MAPPING = OrderedDict(
     [
-        ("huggingface_baseline_encoder", RobertaMLMWrapper,),
-        ("my_model", FullModel,),
+        ("hf_baseline_encoder", RobertaMLMWrapper,),
+        ("my_baseline", FullModel,),
         ("random", RandomMLMModel,),
         ("constant", ConstantMLMModel,),
     ]

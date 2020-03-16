@@ -26,8 +26,8 @@ flags.DEFINE_integer("d_hidden", 768, "Size of token encodings in hidden layers 
 flags.DEFINE_integer("d_ff", 3072, "Number of hidden units in feedforward parts of attention blocks")
 flags.DEFINE_integer("model_save_interval", 300, "Number of seconds after which a model will be checkpointed, even within an epoch")
 flags.DEFINE_integer("nb_heads", 8, "Number of attention heads")
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(8000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
-flags.DEFINE_integer("max_GPUs", 4, "Maximum number of GPUs to use at the same time. Can be put to less to allow other users to still use GPUs")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(11000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")
 flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
 flags.DEFINE_integer("max_seq_length", 512, "Maximum number of words to consider per batch")
@@ -58,11 +58,14 @@ flags.DEFINE_bool("fresh_data",False,"If True, don't use a pickled version of th
 
 FLAGS(sys.argv)
 FLAGS.device_idxs = FLAGS.device_idxs[:FLAGS.max_GPUs]
-print(f'Using GPUs: {FLAGS.device_idxs}')
+print(f'Using GPUs: {FLAGS.device_idxs} unless code changes this flag')
+
+#TODO adapt this to per-experiment configs
 
 # Maps from my name for models to huggingface shortcut names
 CONFIG_MAPPING = OrderedDict(
     [
+        ("DIR", "DIR",),
         ("huggingface_baseline_encoder", "roberta-base",),
     ]
 )

@@ -18,7 +18,7 @@ def add_custom_tokens(vocab):
     Add extra tokens needed for the specific encoder-decoder model I am using
     """
     vocab.add_token_to_namespace(
-        DECODER_START_TOKEN)  # TODO make sure you can directly use the ID for this in the decoder
+        DECODER_START_TOKEN)  # TODO DECODER: make sure you can directly use the ID for this in the decoder
 
 
 class GutenbergReader(DatasetReader):

@@ -41,8 +41,8 @@ def main(_):
     optimizer = optim.Adam(model.parameters(), lr=10e-6)
 
     iterator = BasicIterator(batch_size=FLAGS.d_batch)
-    iterator.index_with(vocab)  # TODO fix checkpointing within one epoch
-    trainer = Trainer(model=model,  # TODO make sure I can pickup training from interrupted process without errors
+    iterator.index_with(vocab)
+    trainer = Trainer(model=model,
                       optimizer=optimizer,
                       iterator=iterator,
                       train_dataset=train_dataset,
@@ -52,7 +52,8 @@ def main(_):
                       serialization_dir=run_dir,
                       cuda_device=FLAGS.device_idxs,
                       model_save_interval=FLAGS.model_save_interval,
-                      num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep)
+                      num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep,
+                      summary_interval=20)
     trainer.train()
 
     model(test_dataset)

@@ -98,7 +98,7 @@ def tokens_to_mask_aware_text(tokenizer, filtered_tokens, mask,
                 current_sub_text.append(token)
     if current_sub_text:
         sub_texts.append(tokenizer.convert_tokens_to_string(
-            current_sub_text))  # TODO figure out here how to add mask_indication without messing up decoding
+            current_sub_text))
     text = " ".join(sub_texts)
 
     if clean_up_tokenization_spaces:

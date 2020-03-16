@@ -21,8 +21,9 @@ class FullModel(Model):
         super().__init__(vocab)
         self.embedder = AlbertEmbedder()
         self.encoder = MySequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
-        self.decoder = MySequential(
-            *[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)]) if FLAGS.use_decoder else torch.nn.Sequential()
+        if FLAGS.use_decoder:
+            self.decoder = MySequential(
+                *[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
         self.predictor = Predictor()
         self.teacher_forcing = do_teacher_forcing
         self.metrics_dict = {}
@@ -58,12 +59,12 @@ class FullModel(Model):
         cum_layer_loss = cum_layer_loss/FLAGS.nb_encoder_layers #Normalize layer loss by number of times it is calculated
         result_dict = {}
         # DECODING
-        if FLAGS.use_decoder:  # TODO maybe add some assert that checks if targets (if any) are in the correct format
+        if FLAGS.use_decoder:  # TODO DECODER: maybe add some assert that checks if targets (if any) are in the correct format
             if self.teacher_forcing:
                 # With teacher forcing, we can parallelize decoding using a causal mask
                 shifted_target_tokens = torch.cat(
                     (tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]] * d_batch).cuda(),
-                     # TODO change this to not use self.vocab, but directly an id
+                     # TODO DECODER: change this to not use self.vocab, but directly an id
                      masked_lm_labels[:, :-1]),
                     dim=1)  # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
                 vocab_scores, cum_decoder_layer_loss = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded, padding_mask)
@@ -74,30 +75,30 @@ class FullModel(Model):
                 vocab_scores, output_idxs = self.beam_decode(d_batch, encoded, max_target_seq_length, padding_mask)
                 result_dict['output_idxs'] = output_idxs
         else:
-            vocab_scores = self.predictor(encoded)  # TODO finish setting up encoder-only baseline
+            vocab_scores = self.predictor(encoded)
 
         if targets is not None:
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
             MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
                                                         targets)
-            result_dict['loss'] = FLAGS.DIR_loss_fraction*cum_layer_loss + (1-FLAGS.DIR_loss_fraction)*MLM_loss
+            result_dict['loss'] = FLAGS.DIR_loss_fraction*cum_layer_loss + (1-FLAGS.DIR_loss_fraction)*MLM_loss if FLAGS.use_DIR else MLM_loss
 
-            self.metrics_dict['crossentropy_loss'] = MLM_loss
-            self.metrics_dict['DIR_loss'] = cum_layer_loss
+            self.metrics_dict['crossentropy_loss'] = MLM_loss.item() if isinstance(MLM_loss,torch.Tensor) else MLM_loss
+            self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,torch.Tensor) else cum_layer_loss
         result_dict['vocab_scores'] = vocab_scores
 
         return result_dict  # Dictionary format for AllenNLP trainer loop
 
     def beam_decode(self, d_batch, encoded, max_target_seq_length,
-                    padding_mask):  # TODO make it so that this also outputs vocab probabilities, to allow training without teacher forcing
+                    padding_mask):  # TODO DECODER: make it so that this also outputs vocab probabilities, to allow training without teacher forcing
         k = FLAGS.beam_width
         out_seq_length = max_target_seq_length + 1  # To allow start token in the output
         output_idxs = torch.zeros(d_batch, out_seq_length, k, dtype=torch.long).cuda()
         output_idxs[:, 0, :] = self.vocab.get_token_index(
-            DECODER_START_TOKEN)  # TODO change this to not use self.vocab, but directly an id
+            DECODER_START_TOKEN)  # TODO DECODER: change this to not use self.vocab, but directly an id
         output_probs = torch.ones(d_batch, k, dtype=torch.long).to(
             FLAGS.device_idx)  # starting probability for product of probabilities along path
-        for i in range(max_target_seq_length):  # TODO this takes pretty long :P find fix?
+        for i in range(max_target_seq_length):  # TODO DECODER: this takes pretty long :P find fix?
 
             # Stack decoder inputs for different candidates in the beam along batch dimension, so they can be
             # processed in parallel
@@ -198,7 +199,7 @@ class EncoderBlock(nn.Module):
         self.feedforward = FeedForwardBlock()
 
     def forward(self, input, padding_mask,
-                cum_layer_loss=0):  # TODO add cum_layer_loss to decoder if I decide to start using it
+                cum_layer_loss=0):
         att_out, layer_loss = itemgetter('activations', 'layer_loss')(
             self.multihead_attention(input, input, padding_mask))
         ff_out = self.feedforward(att_out)
@@ -235,7 +236,7 @@ class DecoderBlock(nn.Module):
         return ff_out, original_encoded_input, padding_mask, layer_loss_1 + layer_loss_2
 
 
-class Anticipation(nn.Module): #TODO count parameters, maybe try with fewer layers
+class Anticipation(nn.Module):
     def __init__(self):
         super().__init__()
         self.regressor = nn.Linear(3 * FLAGS.max_seq_length, FLAGS.max_seq_length)
@@ -267,7 +268,8 @@ class MultiHeadAttention(nn.Module):
         self.use_causal_mask = use_causal_mask
         self.relative_attention_bias = nn.Embedding(FLAGS.relative_attention_num_buckets, FLAGS.nb_heads)
         self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_hidden)
-        self.anticipation = Anticipation()
+        if FLAGS.use_DIR:
+            self.anticipation = Anticipation()
 
     def get_attention_mask(self, padding_mask, d_batch, query_length, value_length):
         """

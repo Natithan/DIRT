@@ -30,6 +30,7 @@ flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(11000), "List of GP
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")
 flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
+flags.DEFINE_float("learning_rate", 10e-6, "Learning rate")
 flags.DEFINE_integer("max_seq_length", 512, "Maximum number of words to consider per batch")
 flags.DEFINE_string("data_folder", "./data/Gutenberg", "Folder with train, val and test subfolders containing data")
 flags.DEFINE_string("model_folder", "./output", "Folder with trained models and tensorboard logs")
@@ -65,7 +66,6 @@ print(f'Using GPUs: {FLAGS.device_idxs} unless code changes this flag')
 # Maps from my name for models to huggingface shortcut names
 CONFIG_MAPPING = OrderedDict(
     [
-        ("DIR", "DIR",),
         ("huggingface_baseline_encoder", "roberta-base",),
     ]
 )

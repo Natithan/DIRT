@@ -38,7 +38,7 @@ def main(_):
                             vocab)
     model_device = f'cuda:{FLAGS.device_idxs[0]}' if len(FLAGS.device_idxs) != 0 else 'cpu'
     model.cuda(model_device)
-    optimizer = optim.Adam(model.parameters(), lr=10e-6)
+    optimizer = optim.Adam(model.parameters(), lr=FLAGS.learning_rate)
 
     iterator = BasicIterator(batch_size=FLAGS.d_batch)
     iterator.index_with(vocab)

@@ -84,7 +84,7 @@ class FullModel(Model):
             MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
                                              targets)
             result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
-                        1 - FLAGS.DIR_loss_fraction) * MLM_loss if FLAGS.use_DIR else MLM_loss
+                    1 - FLAGS.DIR_loss_fraction) * MLM_loss if FLAGS.use_DIR else MLM_loss
 
             self.metrics_dict['crossentropy_loss'] = MLM_loss.item() if isinstance(MLM_loss, torch.Tensor) else MLM_loss
             self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
@@ -244,7 +244,8 @@ class DecoderBlock(nn.Module):
 class Anticipation(nn.Module):
     def __init__(self):
         super().__init__()
-        self.regressor = nn.Linear(3 * FLAGS.max_seq_length, FLAGS.max_seq_length)
+        self.regressor = nn.Linear(3 * FLAGS.max_seq_length,
+                                   FLAGS.max_seq_length)  # TODO this ONLY looks at locations at the moment, which doesn't really make sense :P come up with something else!
 
     def forward(self, projected_q, projected_k, projected_v, original_query):
         mask = (torch.rand(projected_q.shape[1]) > FLAGS.masking_fraction).cuda(
@@ -258,10 +259,11 @@ class Anticipation(nn.Module):
         actual_batch_size = original_query.shape[0]  # Might differ eg at the end of the data
         # Negative loss formed by distances to other batch elements AND correct batch element
         negative_loss = sum([masked_MSE_loss(original_query.roll(shifts=i, dims=0), predicted_query, mask) for i in
-                             range(actual_batch_size)])/actual_batch_size if actual_batch_size > 1 else torch.tensor(1.)
+                             range(actual_batch_size)]) / actual_batch_size if actual_batch_size > 1 else torch.tensor(
+            1.)
 
-        #Positive loss: distance to corresponding batch element
-        positive_loss = masked_MSE_loss(original_query,predicted_query,mask)
+        # Positive loss: distance to corresponding batch element
+        positive_loss = masked_MSE_loss(original_query, predicted_query, mask)
 
         total_loss = positive_loss / negative_loss
         return total_loss

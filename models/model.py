@@ -12,6 +12,7 @@ from torch.autograd import Variable
 from torch import tensor
 from config import FLAGS, TOKENIZER_MAPPING
 from constants import DECODER_START_TOKEN
+from util import masked_MSE_loss
 
 
 class FullModel(Model):
@@ -56,7 +57,7 @@ class FullModel(Model):
         # ENCODING
         embedded_inputs = self.embedder(masked_ids)
         encoded, _, cum_layer_loss = self.encoder(MyDropout()(embedded_inputs), padding_mask)
-        cum_layer_loss = cum_layer_loss/FLAGS.nb_encoder_layers #Normalize layer loss by number of times it is calculated
+        cum_layer_loss = cum_layer_loss / FLAGS.nb_encoder_layers  # Normalize layer loss by number of times it is calculated
         result_dict = {}
         # DECODING
         if FLAGS.use_decoder:  # TODO DECODER: maybe add some assert that checks if targets (if any) are in the correct format
@@ -67,9 +68,10 @@ class FullModel(Model):
                      # TODO DECODER: change this to not use self.vocab, but directly an id
                      masked_lm_labels[:, :-1]),
                     dim=1)  # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
-                vocab_scores, cum_decoder_layer_loss = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded, padding_mask)
-                cum_decoder_layer_loss /= 2*FLAGS.nb_decoder_layers #Normalize layer loss by number of times it is calculated
-                cum_layer_loss = (cum_layer_loss + cum_decoder_layer_loss)/2
+                vocab_scores, cum_decoder_layer_loss = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded,
+                                                                                         padding_mask)
+                cum_decoder_layer_loss /= 2 * FLAGS.nb_decoder_layers  # Normalize layer loss by number of times it is calculated
+                cum_layer_loss = (cum_layer_loss + cum_decoder_layer_loss) / 2
                 _, output_idxs = torch.max(vocab_scores, dim=-1)
             else:
                 vocab_scores, output_idxs = self.beam_decode(d_batch, encoded, max_target_seq_length, padding_mask)
@@ -80,11 +82,13 @@ class FullModel(Model):
         if targets is not None:
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
             MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
-                                                        targets)
-            result_dict['loss'] = FLAGS.DIR_loss_fraction*cum_layer_loss + (1-FLAGS.DIR_loss_fraction)*MLM_loss if FLAGS.use_DIR else MLM_loss
+                                             targets)
+            result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
+                        1 - FLAGS.DIR_loss_fraction) * MLM_loss if FLAGS.use_DIR else MLM_loss
 
-            self.metrics_dict['crossentropy_loss'] = MLM_loss.item() if isinstance(MLM_loss,torch.Tensor) else MLM_loss
-            self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,torch.Tensor) else cum_layer_loss
+            self.metrics_dict['crossentropy_loss'] = MLM_loss.item() if isinstance(MLM_loss, torch.Tensor) else MLM_loss
+            self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
+                                                                                torch.Tensor) else cum_layer_loss
         result_dict['vocab_scores'] = vocab_scores
 
         return result_dict  # Dictionary format for AllenNLP trainer loop
@@ -230,8 +234,9 @@ class DecoderBlock(nn.Module):
 
     def forward(self, output, original_encoded_input, padding_mask):
         self_att_out, layer_loss_1 = itemgetter('activations', 'layer_loss')(self.self_attention(query=output,
-                                           values=output))  # Include skip-connection and layer normalization
-        att_out, layer_loss_2 = itemgetter('activations', 'layer_loss')(self.attention(query=self_att_out, values=original_encoded_input, padding_mask=padding_mask))
+                                                                                                 values=output))  # Include skip-connection and layer normalization
+        att_out, layer_loss_2 = itemgetter('activations', 'layer_loss')(
+            self.attention(query=self_att_out, values=original_encoded_input, padding_mask=padding_mask))
         ff_out = self.feedforward(att_out)
         return ff_out, original_encoded_input, padding_mask, layer_loss_1 + layer_loss_2
 
@@ -242,14 +247,24 @@ class Anticipation(nn.Module):
         self.regressor = nn.Linear(3 * FLAGS.max_seq_length, FLAGS.max_seq_length)
 
     def forward(self, projected_q, projected_k, projected_v, original_query):
-        mask = (torch.rand(projected_q.shape[1]) > FLAGS.masking_fraction).cuda(projected_q.device) # Same mask for items in batch
+        mask = (torch.rand(projected_q.shape[1]) > FLAGS.masking_fraction).cuda(
+            projected_q.device)  # Same mask for items in batch
         extended_mask = torch.cat([mask[None, :, None] for _ in range(3)], dim=1)
         anticipation_input = torch.cat((projected_q, projected_v, projected_k), dim=1)
         masked_anticipation_input = anticipation_input * extended_mask
         predicted_query = self.regressor(masked_anticipation_input.permute(0, 2, 1)).permute(0, 2, 1)
-        loss = torch.mean((((original_query - predicted_query) * ~mask[None, :,
-                                                                  None]) ** 2))  # MSE loss only looking at masked, to-predict sequence elements
-        return loss
+        if FLAGS.d_batch <= 1:
+            raise ValueError('Using DIR requires batch size bigger than 1 to contrast with')
+        actual_batch_size = original_query.shape[0]  # Might differ eg at the end of the data
+        # Negative loss formed by distances to other batch elements AND correct batch element
+        negative_loss = sum([masked_MSE_loss(original_query.roll(shifts=i, dims=0), predicted_query, mask) for i in
+                             range(actual_batch_size)])/actual_batch_size if actual_batch_size > 1 else torch.tensor(1.)
+
+        #Positive loss: distance to corresponding batch element
+        positive_loss = masked_MSE_loss(original_query,predicted_query,mask)
+
+        total_loss = positive_loss / negative_loss
+        return total_loss
 
 
 class MultiHeadAttention(nn.Module):

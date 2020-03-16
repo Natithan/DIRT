@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import torch
 from torch import nn
 
 
@@ -7,6 +8,7 @@ def get_freer_gpu():  # Source: https://discuss.pytorch.org/t/it-there-anyway-to
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >tmp_GPUs_free_mem')
     memory_available = [int(x.split()[2]) for x in open('tmp_GPUs_free_mem', 'r').readlines()]
     return int(np.argmax(memory_available))
+
 
 def get_gpus_with_enough_memory(minimum_memory):
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >tmp_GPUs_free_mem')
@@ -16,6 +18,12 @@ def get_gpus_with_enough_memory(minimum_memory):
         used_gpus = [used_gpus]
     return used_gpus
 
+
+def masked_MSE_loss(target, predicted, mask):
+    '''
+    Returns a mean-square-error loss that only considers sequence elements (along the 2nd dimension) for which the mask is zero
+    '''
+    return torch.mean((((target - predicted) * ~mask[None, :, None]) ** 2))
 
 
 from collections import OrderedDict, Callable, Iterable

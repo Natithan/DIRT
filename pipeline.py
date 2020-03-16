@@ -53,7 +53,8 @@ def main(_):
                       cuda_device=FLAGS.device_idxs,
                       model_save_interval=FLAGS.model_save_interval,
                       num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep,
-                      summary_interval=20)
+                      summary_interval=20,
+                      shuffle=True) # Needed for negative sampling
     trainer.train()
 
     model(test_dataset)

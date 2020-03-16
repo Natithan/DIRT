@@ -244,15 +244,16 @@ class DecoderBlock(nn.Module):
 class Anticipation(nn.Module):
     def __init__(self):
         super().__init__()
+        # self.regressor = nn.Linear
         self.regressor = nn.Linear(3 * FLAGS.max_seq_length,
                                    FLAGS.max_seq_length)  # TODO this ONLY looks at locations at the moment, which doesn't really make sense :P come up with something else!
-
-    def forward(self, projected_q, projected_k, projected_v, original_query):
+        #TODO maybe even proper multi-head-attention, but for the regressive goal?
+    def forward(self, projected_q, projected_k, projected_v, position_embeddings, original_query):
         mask = (torch.rand(projected_q.shape[1]) > FLAGS.masking_fraction).cuda(
             projected_q.device)  # Same mask for items in batch
-        extended_mask = torch.cat([mask[None, :, None] for _ in range(3)], dim=1)
-        anticipation_input = torch.cat((projected_q, projected_v, projected_k), dim=1)
-        masked_anticipation_input = anticipation_input * extended_mask
+        broadcast_ready_mask = mask[None, :, None]
+        anticipation_input = torch.cat((projected_q, projected_v, projected_k), dim=2)
+        masked_anticipation_input = anticipation_input * broadcast_ready_mask
         predicted_query = self.regressor(masked_anticipation_input.permute(0, 2, 1)).permute(0, 2, 1)
         if FLAGS.d_batch <= 1:
             raise ValueError('Using DIR requires batch size bigger than 1 to contrast with')
@@ -330,7 +331,9 @@ class MultiHeadAttention(nn.Module):
         att_weights = torch.bmm(q_multi_parts,
                                 k_multi_parts.transpose(1, 2))  # shape [d_batch x nb_heads, query_length, value_length]
 
-        batch_pos_embeddings = self.select_pos_embeddings(query_length, value_length, d_batch)
+        pos_embeddings = self.select_pos_embeddings(query_length, value_length, d_batch)
+        batch_pos_embeddings = pos_embeddings.repeat(d_batch, 1, 1)
+
         att_weights += batch_pos_embeddings
 
         attention_mask = self.get_attention_mask(padding_mask, d_batch, query_length, value_length)
@@ -345,7 +348,7 @@ class MultiHeadAttention(nn.Module):
         att_output = self.project_o(att_output)
         result_dict['activations'] = self.LayerNorm(att_output + MyDropout()(query))  # Include skip-connection
 
-        result_dict['layer_loss'] = self.anticipation(q, k, v, query) if FLAGS.use_DIR else 0
+        result_dict['layer_loss'] = self.anticipation(q, k, v, pos_embeddings, query) if FLAGS.use_DIR else 0
         return result_dict
 
     def select_pos_embeddings(self, query_length, value_length, d_batch):
@@ -353,9 +356,8 @@ class MultiHeadAttention(nn.Module):
             [[q_idx - k_idx for k_idx in range(value_length)] for q_idx in range(query_length)]) \
             .cuda()  # shape [nb_heads, query_length, value_length]
         bucket_idxs = MultiHeadAttention._relative_position_bucket(rel_pos_indices)
-        single_pos_embeddings = self.relative_attention_bias(bucket_idxs)
-        batch_pos_embeddings = single_pos_embeddings.repeat(1, 1, d_batch).permute(2, 0, 1)
-        return batch_pos_embeddings
+        pos_embeddings = self.relative_attention_bias(bucket_idxs).permute(2, 0, 1)
+        return pos_embeddings
 
     # Adapted from https://github.com/huggingface/transformers/blob/master/src/transformers/modeling_t5.py
     # Allow for position embeddings to be able to deal with longer distances

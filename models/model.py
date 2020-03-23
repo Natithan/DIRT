@@ -202,12 +202,42 @@ class EncoderBlock(nn.Module):
         # Dropout after every feedforward layer
         self.feedforward = FeedForwardBlock()
 
-    def forward(self, input, padding_mask,
+        self.top_down_regressor = nn.Sequential(
+            nn.Linear(FLAGS.d_hidden,FLAGS.d_ff),
+            nn.Linear(FLAGS.d_ff,FLAGS.d_hidden),
+        )
+
+    def forward(self, in_state, padding_mask,
                 cum_layer_loss=0):
-        att_out, layer_loss = itemgetter('activations', 'layer_loss')(
-            self.multihead_attention(input, input, padding_mask))
-        ff_out = self.feedforward(att_out)
-        return ff_out, padding_mask, layer_loss + cum_layer_loss
+        att_out = itemgetter('activations')(
+            self.multihead_attention(in_state, in_state, padding_mask))
+        out_state = self.feedforward(att_out)
+
+        # Top-down regression
+        if FLAGS.use_DIR:
+            mask = (torch.rand(in_state.shape[1]) > FLAGS.masking_fraction).cuda(
+                in_state.device)  # Same mask for items in batch
+            broadcast_ready_mask = mask[None, :, None]
+            masked_in_state = in_state * broadcast_ready_mask
+            masked_att_out = itemgetter('activations')(
+                self.multihead_attention(masked_in_state, in_state, padding_mask))
+            masked_out_state = self.feedforward(masked_att_out) #TODO should add activation? And should add sometimes-not-masking?
+            predicted_in_state = self.top_down_regressor(masked_out_state)
+            layer_loss = self.contrastive_L2_loss(in_state, predicted_in_state, mask)
+        return out_state, padding_mask, layer_loss + cum_layer_loss
+
+    def contrastive_L2_loss(self, in_state, predicted_in_state, mask):
+        if FLAGS.d_batch <= 1:
+            raise ValueError('Using DIR requires batch size bigger than 1 to contrast with')
+        d_batch = in_state.shape[0]
+        negative_loss = sum([masked_MSE_loss(in_state.roll(shifts=i, dims=0), predicted_in_state, mask) for i in
+                             range(
+                                 d_batch)]) / d_batch if d_batch > 1 else torch.tensor(
+            1.)
+        # Positive loss: distance to corresponding batch element
+        positive_loss = masked_MSE_loss(in_state, predicted_in_state, mask)
+        layer_loss = positive_loss / negative_loss
+        return layer_loss
 
 
 class MySequential(nn.Sequential):
@@ -224,7 +254,7 @@ class MySequential(nn.Sequential):
         return inputs
 
 
-class DecoderBlock(nn.Module):
+class DecoderBlock(nn.Module): #TODO Decoder if put in use: adapt layer loss to be not from mhattention, but directly in forward
     def __init__(self):
         super().__init__()
         self.self_attention = MultiHeadAttention(use_causal_mask=True)
@@ -239,35 +269,6 @@ class DecoderBlock(nn.Module):
             self.attention(query=self_att_out, values=original_encoded_input, padding_mask=padding_mask))
         ff_out = self.feedforward(att_out)
         return ff_out, original_encoded_input, padding_mask, layer_loss_1 + layer_loss_2
-
-
-class Anticipation(nn.Module):
-    def __init__(self):
-        super().__init__()
-        # self.regressor = nn.Linear
-        self.regressor = nn.Linear(3 * FLAGS.max_seq_length,
-                                   FLAGS.max_seq_length)  # TODO this ONLY looks at locations at the moment, which doesn't really make sense :P come up with something else!
-        #TODO maybe even proper multi-head-attention, but for the regressive goal?
-    def forward(self, projected_q, projected_k, projected_v, position_embeddings, original_query):
-        mask = (torch.rand(projected_q.shape[1]) > FLAGS.masking_fraction).cuda(
-            projected_q.device)  # Same mask for items in batch
-        broadcast_ready_mask = mask[None, :, None]
-        anticipation_input = torch.cat((projected_q, projected_v, projected_k), dim=2)
-        masked_anticipation_input = anticipation_input * broadcast_ready_mask
-        predicted_query = self.regressor(masked_anticipation_input.permute(0, 2, 1)).permute(0, 2, 1)
-        if FLAGS.d_batch <= 1:
-            raise ValueError('Using DIR requires batch size bigger than 1 to contrast with')
-        actual_batch_size = original_query.shape[0]  # Might differ eg at the end of the data
-        # Negative loss formed by distances to other batch elements AND correct batch element
-        negative_loss = sum([masked_MSE_loss(original_query.roll(shifts=i, dims=0), predicted_query, mask) for i in
-                             range(actual_batch_size)]) / actual_batch_size if actual_batch_size > 1 else torch.tensor(
-            1.)
-
-        # Positive loss: distance to corresponding batch element
-        positive_loss = masked_MSE_loss(original_query, predicted_query, mask)
-
-        total_loss = positive_loss / negative_loss
-        return total_loss
 
 
 class MultiHeadAttention(nn.Module):
@@ -286,8 +287,7 @@ class MultiHeadAttention(nn.Module):
         self.use_causal_mask = use_causal_mask
         self.relative_attention_bias = nn.Embedding(FLAGS.relative_attention_num_buckets, FLAGS.nb_heads)
         self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_hidden)
-        if FLAGS.use_DIR:
-            self.anticipation = Anticipation()
+
 
     def get_attention_mask(self, padding_mask, d_batch, query_length, value_length):
         """
@@ -348,7 +348,6 @@ class MultiHeadAttention(nn.Module):
         att_output = self.project_o(att_output)
         result_dict['activations'] = self.LayerNorm(att_output + MyDropout()(query))  # Include skip-connection
 
-        result_dict['layer_loss'] = self.anticipation(q, k, v, pos_embeddings, query) if FLAGS.use_DIR else 0
         return result_dict
 
     def select_pos_embeddings(self, query_length, value_length, d_batch):

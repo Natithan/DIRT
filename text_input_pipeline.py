@@ -1,7 +1,6 @@
 import pickle
 from collections import Iterable
 import time
-import dill as dill
 import overrides
 from allennlp.data import Vocabulary, DatasetReader, Instance
 from allennlp.data.fields import ArrayField
@@ -122,13 +121,3 @@ class GutenbergReader(DatasetReader):
     #         result = self._read_data_folders()
     #         pickle.dump(result,open(this_blob_path, 'wb'))
     #         return result
-
-    def _instances_from_cache_file(self, cache_filename):
-        with open(cache_filename, 'rb') as cache_file:
-            instances = dill.load(cache_file)
-            for instance in instances:
-                yield instance
-
-    def _instances_to_cache_file(self, cache_filename, instances) -> None:
-        with open(cache_filename, 'wb') as cache_file:
-            dill.dump(instances, cache_file)

@@ -30,7 +30,7 @@ class FullModel(Model):
         self.metrics_dict = {}
 
     def get_metrics(self, **kwargs):
-        return self.metrics_dict
+        return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
 
     def process_targets_for_loss(self, target_tokens,
                                  max_target_seq_length):
@@ -86,7 +86,8 @@ class FullModel(Model):
             result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
                     1 - FLAGS.DIR_loss_fraction) * MLM_loss if FLAGS.use_DIR else MLM_loss
 
-            self.metrics_dict['crossentropy_loss'] = MLM_loss.item() if isinstance(MLM_loss, torch.Tensor) else MLM_loss
+            self.metrics_dict['crossentropy_loss'] = MLM_loss.item()
+            self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
             self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
                                                                                 torch.Tensor) else cum_layer_loss
         result_dict['vocab_scores'] = vocab_scores
@@ -202,10 +203,11 @@ class EncoderBlock(nn.Module):
         # Dropout after every feedforward layer
         self.feedforward = FeedForwardBlock()
 
-        self.top_down_regressor = nn.Sequential(
-            nn.Linear(FLAGS.d_hidden,FLAGS.d_ff),
-            nn.Linear(FLAGS.d_ff,FLAGS.d_hidden),
-        )
+        if FLAGS.use_DIR:
+            self.top_down_regressor = nn.Sequential(
+                nn.Linear(FLAGS.d_hidden,FLAGS.d_ff),
+                nn.Linear(FLAGS.d_ff,FLAGS.d_hidden),
+            )
 
     def forward(self, in_state, padding_mask,
                 cum_layer_loss=0):
@@ -224,6 +226,8 @@ class EncoderBlock(nn.Module):
             masked_out_state = self.feedforward(masked_att_out) #TODO should add activation? And should add sometimes-not-masking?
             predicted_in_state = self.top_down_regressor(masked_out_state)
             layer_loss = self.contrastive_L2_loss(in_state, predicted_in_state, mask)
+        else:
+            layer_loss = 0
         return out_state, padding_mask, layer_loss + cum_layer_loss
 
     def contrastive_L2_loss(self, in_state, predicted_in_state, mask):

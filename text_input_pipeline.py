@@ -103,21 +103,3 @@ class GutenbergReader(DatasetReader):
             for name in result:
                 pickle.dump(result[name],open(Path(blob_dir_path,name + maybe_mini), 'wb'))
         return result
-        # return self._read_data_folders()
-    # def get_data_dict(self):
-    #     '''
-    #     Returns a dictionary containing train, test and validation instance lists, as well as the vocab created from train and validation data
-    #     '''
-    #     blob_dir_path = Path('blobs')
-    #     if not os.path.exists(blob_dir_path):
-    #         os.mkdir(blob_dir_path)
-    #     maybe_mini = '_mini' if FLAGS.mini else ''
-    #     this_blob_path = Path(blob_dir_path,f'{self.__class__.__name__}_data{maybe_mini}.pkl')
-    #
-    #     if os.path.exists(this_blob_path):
-    #         with open(this_blob_path, 'rb') as f:
-    #             return pickle.load(f)
-    #     else:
-    #         result = self._read_data_folders()
-    #         pickle.dump(result,open(this_blob_path, 'wb'))
-    #         return result

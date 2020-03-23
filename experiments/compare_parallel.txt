@@ -2,3 +2,5 @@ python pipeline.py --model=hf_baseline --max_GPUs=1 --d_batch=2
 python pipeline.py --model=my_model --max_GPUs=1 --d_batch=2
 python pipeline.py --run_name=DIR_contrastive --model=my_model --max_GPUs=4 --d_batch=7 --use_DIR
 python pipeline.py --run_name=DIR_top_down --model=my_model --max_GPUs=2 --d_batch=6 --use_DIR
+python pipeline.py --run_name=DIR_top_down_onlyDIR --model=my_model --max_GPUs=1 --d_batch=3 --use_DIR --DIR_loss_fraction 1
+python pipeline.py --run_name=no_DIR --model=my_model --max_GPUs=1 --d_batch=3 --use_DIR --DIR_loss_fraction 1

@@ -4,21 +4,24 @@ import os
 
 import torch
 from torch import nn
+from torch.utils.data import DataLoader
+import torch.distributed as dist
+
 
 from models.wrappers import MLMModelWrapper, MODEL_MAPPING
 
 from pathlib import Path
-from allennlp.data.iterators import BasicIterator
-from allennlp.training import Trainer
 import torch.optim as optim
 
 from absl import app
 from config import FLAGS
 
 from text_input_pipeline import GutenbergReader
+from allennlp.training import GradientDescentTrainer, Checkpointer
 
 
 def main(_):
+    setup()
     # Create folders and files to store results and configs
     run_dir = Path(FLAGS.model_folder, FLAGS.model, FLAGS.run_name)
     if not os.path.exists(run_dir):
@@ -39,25 +42,38 @@ def main(_):
     model_device = f'cuda:{FLAGS.device_idxs[0]}' if len(FLAGS.device_idxs) != 0 else 'cpu'
     model.cuda(model_device)
     optimizer = optim.Adam(model.parameters(), lr=FLAGS.learning_rate)
-
-    iterator = BasicIterator(batch_size=FLAGS.d_batch)
-    iterator.index_with(vocab)
-    trainer = Trainer(model=model,
-                      optimizer=optimizer,
-                      iterator=iterator,
-                      train_dataset=train_dataset,
-                      validation_dataset=val_dataset,
-                      patience=FLAGS.patience,
-                      num_epochs=FLAGS.num_epochs,
-                      serialization_dir=run_dir,
-                      cuda_device=FLAGS.device_idxs,
-                      model_save_interval=FLAGS.model_save_interval,
-                      num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep,
-                      summary_interval=20,
-                      shuffle=True) # Needed for negative sampling
+    loader = DataLoader(train_dataset,
+                        batch_size=FLAGS.d_batch,
+                        shuffle=True)  # Shuffle needed for negative sampling
+    val_loader = DataLoader(val_dataset, batch_size=FLAGS.d_batch)
+    checkpointer = Checkpointer(serialization_dir=run_dir,
+                                num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep)
+    trainer = GradientDescentTrainer(model=model,
+                                     optimizer=optimizer,
+                                     data_loader=loader,
+                                     validation_data_loader=val_loader,
+                                     patience=FLAGS.patience,
+                                     num_epochs=FLAGS.num_epochs,
+                                     serialization_dir=run_dir,
+                                     model_save_interval=FLAGS.model_save_interval,
+                                     checkpointer=checkpointer,
+                                     distributed=True,
+                                     world_size=FLAGS.max_GPUs,
+                                     cuda_device=FLAGS.device_idxs[0])
     trainer.train()
 
     model(test_dataset)
+
+def setup():
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
+    # initialize the process group
+    dist.init_process_group("gloo", world_size=FLAGS.world_size, rank=FLAGS.rank)
+
+    # Explicitly setting seed to make sure that models created in two processes
+    # start from same random weights and biases.
+    torch.manual_seed(42) #TODO probs add the spawn with nb_processes stuff
 
 
 if __name__ == '__main__':

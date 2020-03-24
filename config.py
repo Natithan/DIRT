@@ -26,8 +26,6 @@ flags.DEFINE_integer("d_hidden", 768, "Size of token encodings in hidden layers 
 flags.DEFINE_integer("d_ff", 3072, "Number of hidden units in feedforward parts of attention blocks")
 flags.DEFINE_integer("model_save_interval", 300, "Number of seconds after which a model will be checkpointed, even within an epoch")
 flags.DEFINE_integer("nb_heads", 8, "Number of attention heads")
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(11000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
-flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")
 flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
 flags.DEFINE_float("learning_rate", 10e-6, "Learning rate")
@@ -56,6 +54,13 @@ flags.DEFINE_bool("use_pretrained_weights", False, "Whether to initialize weight
                                                   "If so, the CONFIG_MAPPING is used to determine weights. "
                                                   "Only works for hf_baseline so far ;)") #TODO maybe expand this to own model
 flags.DEFINE_bool("fresh_data",False,"If True, don't use a pickled version of the data input if that existed")
+
+
+# Distributed training stuff
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(11000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
+flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
+flags.DEFINE_integer("rank",0,"Needed for DDP. Not sure what it is :D") #TODO get this
 
 FLAGS(sys.argv)
 FLAGS.device_idxs = FLAGS.device_idxs[:FLAGS.max_GPUs]

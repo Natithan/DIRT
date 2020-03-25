@@ -67,6 +67,8 @@ def main(_):
 def setup():
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
+    os.environ['NUM_NODES'] = FLAGS.world_size
+    os.environ['CUDA_DEVICES'] = FLAGS.device_idxs
 
     # initialize the process group
     dist.init_process_group("gloo", world_size=FLAGS.world_size, rank=FLAGS.rank)

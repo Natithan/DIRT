@@ -16,12 +16,10 @@ from config import FLAGS
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 
-def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+def setup():
 
     # initialize the process group
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    dist.init_process_group("nccl", init_method='env://')
 
     # Explicitly setting seed to make sure that models created in two processes
     # start from same random weights and biases.
@@ -34,31 +32,33 @@ def cleanup():
 class ToyModel(Model):
     def __init__(self):
         super(ToyModel, self).__init__(vocab=Vocabulary())
-        self.net1 = nn.Linear(40000, 10000)
+        d_hidden = 3000
+        self.net1 = nn.Linear(1000, d_hidden)
         self.relu = nn.ReLU()
-        self.net2 = nn.Linear(10000, 5)
+        self.net_long = nn.Sequential(*[nn.Linear(d_hidden,d_hidden),nn.ReLU()]*30)
+        self.net2 = nn.Linear(d_hidden, 5)
 
     def forward(self, x, actual):
-        predicted =  self.net2(self.relu(self.net1(x)))
+        predicted =  self.net2(self.net_long(self.relu(self.net1(x))))
         loss = nn.MSELoss()(predicted,actual)
         return {'loss':loss}
 
 
 
-def main(rank, world_size): #TODO figure out why 1 GPU is faster than 2 when using DDP :P
+def main(_): #TODO figure out why 1 GPU is faster than 2 when using DDP :P
+    #TODO make sure no zombie process when using torch distributed launch
+    gpus = FLAGS.device_idxs
+    world_size=len(gpus)
     distributed = world_size > 1
-    if distributed:
-        setup(rank, world_size)
-
-
-    device_idx = FLAGS.device_idxs[rank]
+    setup()
+    device_idx = gpus[FLAGS.local_rank]
 
     # create model and move it to device_ids[0]
     model = ToyModel().to(device_idx)
     # output_device defaults to device_ids[0]
 
     optimizer = optim.Adam(model.parameters())
-    train_dataset = [{'x': torch.rand(40000), 'actual': torch.rand(5)} for _ in range(12000)]
+    train_dataset = [{'x': torch.rand(1000), 'actual': torch.rand(5)} for _ in range(12000)]
     loader = DataLoader(train_dataset,
                         batch_size=4,
                         shuffle=True)
@@ -75,15 +75,5 @@ def main(rank, world_size): #TODO figure out why 1 GPU is faster than 2 when usi
         cleanup()
 
 
-def main_distributed_wrapper(_):
-    nb_gpus = len(FLAGS.device_idxs)
-    if nb_gpus > 1:
-        mp.spawn(main,
-                 args=(nb_gpus,),
-                 nprocs=nb_gpus,
-                 join=True)
-    else:
-        main(world_size=0,rank=0)
-torch.distributed
 if __name__ == '__main__':
-    app.run(main_distributed_wrapper)
+    app.run(main)

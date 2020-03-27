@@ -5,8 +5,10 @@ import sys
 from datetime import datetime
 from absl import flags
 # %% FLAGS
+from pathlib2 import Path
 from transformers import RobertaTokenizer
 
+from constants import READ_ONLY_ROOT
 from util import get_freer_gpu, DefaultOrderedDict, get_gpus_with_enough_memory
 
 logger = logging.getLogger(__name__)
@@ -30,7 +32,7 @@ flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked dur
 flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
 flags.DEFINE_float("learning_rate", 10e-6, "Learning rate")
 flags.DEFINE_integer("max_seq_length", 512, "Maximum number of words to consider per batch")
-flags.DEFINE_string("data_folder", "./data/Gutenberg", "Folder with train, val and test subfolders containing data")
+flags.DEFINE_string("data_folder", Path(READ_ONLY_ROOT,"./data/Gutenberg"), "Folder with train, val and test subfolders containing data")
 flags.DEFINE_string("model_folder", "./output", "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
                     "Folder with trained models and tensorboard logs")
@@ -57,7 +59,7 @@ flags.DEFINE_bool("fresh_data",False,"If True, don't use a pickled version of th
 
 
 # Distributed training stuff
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(10000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(3000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("rank",0,"Needed for DDP. Not sure what it is :D") #TODO get this

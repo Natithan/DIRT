@@ -20,7 +20,7 @@ from text_input_pipeline import GutenbergReader
 from allennlp.training import GradientDescentTrainer, Checkpointer
 
 
-def main(_):
+def main(_): #TODO change checkpointer to only keep 1 most recent model
     setup()
     # Create folders and files to store results and configs
     run_dir = Path(FLAGS.model_folder, FLAGS.model, FLAGS.run_name)

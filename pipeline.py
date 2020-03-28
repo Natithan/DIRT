@@ -1,6 +1,7 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 import os
+import torch.multiprocessing as mp
 
 import torch
 from torch import nn
@@ -20,8 +21,10 @@ from text_input_pipeline import GutenbergReader
 from allennlp.training import GradientDescentTrainer, Checkpointer
 
 
-def main(_): #TODO change checkpointer to only keep 1 most recent model
-    setup()
+def main(world_size,rank): #TODO change checkpointer to only keep 1 most recent model
+    distributed = (world_size > 1)
+    if distributed:
+        setup(rank, world_size)
     # Create folders and files to store results and configs
     run_dir = Path(FLAGS.model_folder, FLAGS.model, FLAGS.run_name)
     if not os.path.exists(run_dir):
@@ -45,7 +48,7 @@ def main(_): #TODO change checkpointer to only keep 1 most recent model
     loader = DataLoader(train_dataset,
                         batch_size=FLAGS.d_batch,
                         shuffle=True)  # Shuffle needed for negative sampling
-    val_loader = DataLoader(val_dataset, batch_size=FLAGS.d_batch)
+    val_loader = DataLoader(val_dataset, batch_size=FLAGS.d_batch) #TODO fix distributed sampler
     checkpointer = Checkpointer(serialization_dir=run_dir,
                                 num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep)
     trainer = GradientDescentTrainer(model=model,
@@ -57,26 +60,38 @@ def main(_): #TODO change checkpointer to only keep 1 most recent model
                                      serialization_dir=run_dir,
                                      model_save_interval=FLAGS.model_save_interval,
                                      checkpointer=checkpointer,
-                                     distributed=True,
+                                     distributed=distributed,
                                      world_size=FLAGS.max_GPUs,
                                      cuda_device=FLAGS.device_idxs[0])
     trainer.train()
 
     model(test_dataset)
+    cleanup()
 
-def setup():
+def cleanup():
+    dist.destroy_process_group()
+
+def setup(world_size,rank):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
-    os.environ['NUM_NODES'] = FLAGS.world_size
-    os.environ['CUDA_DEVICES'] = FLAGS.device_idxs
-
     # initialize the process group
-    dist.init_process_group("gloo", world_size=FLAGS.world_size, rank=FLAGS.rank)
+    dist.init_process_group("nccl", world_size=world_size, rank=rank)
 
     # Explicitly setting seed to make sure that models created in two processes
     # start from same random weights and biases.
-    torch.manual_seed(42) #TODO probs add the spawn with nb_processes stuff
+    torch.manual_seed(42)
 
+def main_distributed_wrapper(_):
+    nb_gpus = len(FLAGS.device_idxs)
+    if nb_gpus > 1:
+        mp.spawn(main,
+                 args=(nb_gpus,),
+                 nprocs=nb_gpus,
+                 join=True)
+    else:
+        main(world_size=0,rank=0)
+if __name__ == '__main__':
+    app.run(main_distributed_wrapper)
 
 if __name__ == '__main__':
-    app.run(main)
+    app.run(main_distributed_wrapper)

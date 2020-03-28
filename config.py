@@ -8,7 +8,7 @@ from absl import flags
 from pathlib2 import Path
 from transformers import RobertaTokenizer
 
-from constants import READ_ONLY_ROOT
+from constants import READ_ONLY_ROOT, WRITE_ROOT
 from util import get_freer_gpu, DefaultOrderedDict, get_gpus_with_enough_memory
 
 logger = logging.getLogger(__name__)
@@ -32,8 +32,8 @@ flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked dur
 flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
 flags.DEFINE_float("learning_rate", 10e-6, "Learning rate")
 flags.DEFINE_integer("max_seq_length", 512, "Maximum number of words to consider per batch")
-flags.DEFINE_string("data_folder", Path(READ_ONLY_ROOT,"./data/Gutenberg"), "Folder with train, val and test subfolders containing data")
-flags.DEFINE_string("model_folder", "./output", "Folder with trained models and tensorboard logs")
+flags.DEFINE_string("data_folder", Path(READ_ONLY_ROOT,"data/Gutenberg").as_posix(), "Folder with train, val and test subfolders containing data")
+flags.DEFINE_string("model_folder", Path(WRITE_ROOT,"output").as_posix(), "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
                     "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("mode", "", "Flag to allow python console command line argument")

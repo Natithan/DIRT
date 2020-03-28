@@ -18,7 +18,7 @@ from config import FLAGS
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 
-def setup():
+def setup(rank, world_size):
 
     # initialize the process group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)

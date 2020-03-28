@@ -244,15 +244,13 @@ class DecoderBlock(nn.Module):
 class Anticipation(nn.Module):
     def __init__(self):
         super().__init__()
-        # self.regressor = nn.Linear
         self.regressor = nn.Linear(3 * FLAGS.max_seq_length,
-                                   FLAGS.max_seq_length)  # TODO this ONLY looks at locations at the moment, which doesn't really make sense :P come up with something else!
-        #TODO maybe even proper multi-head-attention, but for the regressive goal?
+                                   FLAGS.max_seq_length)
     def forward(self, projected_q, projected_k, projected_v, position_embeddings, original_query):
         mask = (torch.rand(projected_q.shape[1]) > FLAGS.masking_fraction).cuda(
             projected_q.device)  # Same mask for items in batch
-        broadcast_ready_mask = mask[None, :, None]
-        anticipation_input = torch.cat((projected_q, projected_v, projected_k), dim=2)
+        broadcast_ready_mask = mask[None, :, None].repeat(1,3,1)
+        anticipation_input = torch.cat((projected_q, projected_v, projected_k), dim=1)
         masked_anticipation_input = anticipation_input * broadcast_ready_mask
         predicted_query = self.regressor(masked_anticipation_input.permute(0, 2, 1)).permute(0, 2, 1)
         if FLAGS.d_batch <= 1:

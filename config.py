@@ -5,8 +5,10 @@ import sys
 from datetime import datetime
 from absl import flags
 # %% FLAGS
+from pathlib2 import Path
 from transformers import RobertaTokenizer
 
+from constants import READ_ONLY_ROOT, WRITE_ROOT
 from util import get_freer_gpu, DefaultOrderedDict, get_gpus_with_enough_memory
 
 logger = logging.getLogger(__name__)
@@ -26,14 +28,12 @@ flags.DEFINE_integer("d_hidden", 768, "Size of token encodings in hidden layers 
 flags.DEFINE_integer("d_ff", 3072, "Number of hidden units in feedforward parts of attention blocks")
 flags.DEFINE_integer("model_save_interval", 300, "Number of seconds after which a model will be checkpointed, even within an epoch")
 flags.DEFINE_integer("nb_heads", 8, "Number of attention heads")
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(11000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
-flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")
 flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
 flags.DEFINE_float("learning_rate", 10e-6, "Learning rate")
 flags.DEFINE_integer("max_seq_length", 512, "Maximum number of words to consider per batch")
-flags.DEFINE_string("data_folder", "./data/Gutenberg", "Folder with train, val and test subfolders containing data")
-flags.DEFINE_string("model_folder", "./output", "Folder with trained models and tensorboard logs")
+flags.DEFINE_string("data_folder", Path(READ_ONLY_ROOT,"data/Gutenberg").as_posix(), "Folder with train, val and test subfolders containing data")
+flags.DEFINE_string("model_folder", Path(WRITE_ROOT,"output").as_posix(), "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
                     "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("mode", "", "Flag to allow python console command line argument")
@@ -51,11 +51,18 @@ flags.DEFINE_integer("nb_feedforward_layers", 2,
                      "Number of layers in the feedforward subcomponents of the transformer.")
 flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings.")
 flags.DEFINE_integer("beam_width", 3, "Width of the beam during the decoding beam search phase.")
-flags.DEFINE_integer("num_serialized_models_to_keep", 5, "Number of serialized trained models to store.")
+flags.DEFINE_integer("num_serialized_models_to_keep", 1, "Number of serialized trained models to store.")
 flags.DEFINE_bool("use_pretrained_weights", False, "Whether to initialize weights with pretrained weights. "
                                                   "If so, the CONFIG_MAPPING is used to determine weights. "
                                                   "Only works for hf_baseline so far ;)") #TODO maybe expand this to own model
 flags.DEFINE_bool("fresh_data",False,"If True, don't use a pickled version of the data input if that existed")
+
+
+# Distributed training stuff
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(3000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
+flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
+flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")
 
 FLAGS(sys.argv)
 FLAGS.device_idxs = FLAGS.device_idxs[:FLAGS.max_GPUs]

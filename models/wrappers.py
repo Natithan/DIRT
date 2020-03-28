@@ -4,7 +4,7 @@ import torch
 from allennlp.models import Model
 from typing import Dict, List
 
-from allennlp.data import TokenIndexer, TokenType, Token, Vocabulary
+from allennlp.data import TokenIndexer, Token, Vocabulary
 
 from config import FLAGS, CONFIG_MAPPING, OBJECTIVE_MAPPING, TOKENIZER_MAPPING
 from transformers import RobertaForMaskedLM, RobertaTokenizer
@@ -60,7 +60,7 @@ class RobertaMLMWrapper(Model):
             result_dict['vocab_scores'] = tuple_result[0]
         return result_dict
 
-    def get_metrics(self):
+    def get_metrics(self, **kwargs):
         return self.metrics_dict
 
 
@@ -79,15 +79,14 @@ class RobertaTokenizerWrapper(TokenIndexer):
         text = token.text
         counter[self.namespace][text] += 1
 
-    def tokens_to_indices(self, tokens: List[Token], vocabulary: Vocabulary, index_name: str) -> Dict[
-        str, List[TokenType]]:
+    def tokens_to_indices(self, tokens: List[Token], vocabulary: Vocabulary, index_name: str):
         return self.tokenizer.encode(tokens, add_special_tokens=True)
 
-    def get_padding_lengths(self, token: TokenType) -> Dict[str, int]:
+    def get_padding_lengths(self, token) -> Dict[str, int]:
         pass
 
-    def pad_token_sequence(self, tokens: Dict[str, List[TokenType]], desired_num_tokens: Dict[str, int],
-                           padding_lengths: Dict[str, int]) -> Dict[str, TokenType]:
+    def pad_token_sequence(self, tokens, desired_num_tokens: Dict[str, int],
+                           padding_lengths: Dict[str, int]):
         pass
 
 

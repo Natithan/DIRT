@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import torch
-from torch import nn
+from torch import nn, distributed as dist
 
 
 def get_freer_gpu():  # Source: https://discuss.pytorch.org/t/it-there-anyway-to-let-program-select-free-gpu-automatically/17560/6
@@ -16,6 +16,7 @@ def get_gpus_with_enough_memory(minimum_memory):
     used_gpus = np.argwhere(np.array(memory_available) > minimum_memory).squeeze().tolist()
     if not isinstance(used_gpus, Iterable):
         used_gpus = [used_gpus]
+    print(used_gpus)
     return used_gpus
 
 
@@ -71,3 +72,19 @@ class DefaultOrderedDict(OrderedDict):
     def __repr__(self):
         return 'OrderedDefaultDict(%s, %s)' % (self.default_factory,
                                                OrderedDict.__repr__(self))
+
+
+def cleanup():
+    dist.destroy_process_group()
+
+
+def setup(rank,world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
+    # initialize the process group
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
+    # Explicitly setting seed to make sure that models created in two processes
+    # start from same random weights and biases.
+    torch.manual_seed(42)

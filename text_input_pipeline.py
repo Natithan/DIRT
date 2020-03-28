@@ -1,18 +1,13 @@
 import pickle
-from collections import Iterable
 import time
-import dill as dill
-import overrides
 import torch
-from allennlp.data import Vocabulary, DatasetReader, Instance
-from allennlp.data.fields import ArrayField
+from allennlp.data import Vocabulary
 from pathlib2 import Path
 from torch.utils.data import Dataset
 
-from constants import DECODER_START_TOKEN
+from constants import DECODER_START_TOKEN, READ_ONLY_ROOT
 import os
 from config import FLAGS, TOKENIZER_MAPPING
-import numpy as np
 
 
 def add_custom_tokens(vocab):
@@ -81,10 +76,10 @@ class GutenbergReader:
                 "vocab": dummy_vocab}
 
     def get_data_dict(self):
-        '''
+        '''s
         Returns a dictionary containing train, test and validation instance lists, as well as the vocab created from train and validation data
         '''
-        blob_dir_path = Path('blobs')
+        blob_dir_path = Path(READ_ONLY_ROOT,'blobs')
         if not os.path.exists(blob_dir_path):
             os.mkdir(blob_dir_path)
         maybe_mini = '_mini' if FLAGS.mini else ''

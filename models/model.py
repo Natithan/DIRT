@@ -30,7 +30,7 @@ class FullModel(Model):
         self.metrics_dict = {}
 
     def get_metrics(self, **kwargs):
-        return self.metrics_dict
+        return self.metrics_dict.copy()
 
     def process_targets_for_loss(self, target_tokens,
                                  max_target_seq_length):
@@ -86,7 +86,8 @@ class FullModel(Model):
             result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
                     1 - FLAGS.DIR_loss_fraction) * MLM_loss if FLAGS.use_DIR else MLM_loss
 
-            self.metrics_dict['crossentropy_loss'] = MLM_loss.item() if isinstance(MLM_loss, torch.Tensor) else MLM_loss
+            self.metrics_dict['crossentropy_loss'] = MLM_loss.item()
+            self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
             self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
                                                                                 torch.Tensor) else cum_layer_loss
         result_dict['vocab_scores'] = vocab_scores

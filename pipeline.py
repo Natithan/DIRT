@@ -3,11 +3,7 @@ from __future__ import unicode_literals, print_function
 import os
 import torch.multiprocessing as mp
 
-import torch
-from torch import nn
-from torch.utils.data import DataLoader
-import torch.distributed as dist
-
+from torch.utils.data import DataLoader, DistributedSampler
 
 from models.wrappers import MLMModelWrapper, MODEL_MAPPING
 
@@ -20,8 +16,21 @@ from config import FLAGS
 from text_input_pipeline import GutenbergReader
 from allennlp.training import GradientDescentTrainer, Checkpointer
 
+from util import cleanup, setup
 
-def main(world_size,rank): #TODO change checkpointer to only keep 1 most recent model
+
+def get_loader(dataset, distributed):
+    if distributed:
+        sampler = DistributedSampler(dataset, shuffle=True) # Shuffle needed for negative sampling
+        return DataLoader(dataset,
+                            batch_size=FLAGS.d_batch,
+                            sampler=sampler)
+    else:
+        return DataLoader(dataset,
+                            batch_size=FLAGS.d_batch,
+                            shuffle=True)
+
+def main(world_size,rank):
     distributed = (world_size > 1)
     if distributed:
         setup(rank, world_size)
@@ -45,10 +54,10 @@ def main(world_size,rank): #TODO change checkpointer to only keep 1 most recent 
     model_device = f'cuda:{FLAGS.device_idxs[0]}' if len(FLAGS.device_idxs) != 0 else 'cpu'
     model.cuda(model_device)
     optimizer = optim.Adam(model.parameters(), lr=FLAGS.learning_rate)
-    loader = DataLoader(train_dataset,
-                        batch_size=FLAGS.d_batch,
-                        shuffle=True)  # Shuffle needed for negative sampling
-    val_loader = DataLoader(val_dataset, batch_size=FLAGS.d_batch) #TODO fix distributed sampler
+    loader = get_loader(train_dataset,distributed)
+    val_loader = get_loader(val_dataset, distributed)
+
+
     checkpointer = Checkpointer(serialization_dir=run_dir,
                                 num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep)
     trainer = GradientDescentTrainer(model=model,
@@ -66,20 +75,9 @@ def main(world_size,rank): #TODO change checkpointer to only keep 1 most recent 
     trainer.train()
 
     model(test_dataset)
-    cleanup()
+    if distributed:
+        cleanup()
 
-def cleanup():
-    dist.destroy_process_group()
-
-def setup(world_size,rank):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
-    # initialize the process group
-    dist.init_process_group("nccl", world_size=world_size, rank=rank)
-
-    # Explicitly setting seed to make sure that models created in two processes
-    # start from same random weights and biases.
-    torch.manual_seed(42)
 
 def main_distributed_wrapper(_):
     nb_gpus = len(FLAGS.device_idxs)
@@ -90,8 +88,6 @@ def main_distributed_wrapper(_):
                  join=True)
     else:
         main(world_size=0,rank=0)
-if __name__ == '__main__':
-    app.run(main_distributed_wrapper)
 
 if __name__ == '__main__':
     app.run(main_distributed_wrapper)

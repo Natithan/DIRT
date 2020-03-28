@@ -351,9 +351,8 @@ class MultiHeadAttention(nn.Module):
 
     def select_pos_embeddings(self, query_length, value_length, d_batch):
         rel_pos_indices = tensor(
-            [[q_idx - k_idx for k_idx in range(value_length)] for q_idx in range(query_length)]) \
-            .cuda()  # shape [nb_heads, query_length, value_length]
-        bucket_idxs = MultiHeadAttention._relative_position_bucket(rel_pos_indices)
+            [[q_idx - k_idx for k_idx in range(value_length)] for q_idx in range(query_length)]) # shape [nb_heads, query_length, value_length]
+        bucket_idxs = MultiHeadAttention._relative_position_bucket(rel_pos_indices).cuda(self.relative_attention_bias.weight.device)
         pos_embeddings = self.relative_attention_bias(bucket_idxs).permute(2, 0, 1)
         return pos_embeddings
 

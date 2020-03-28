@@ -51,7 +51,7 @@ flags.DEFINE_integer("nb_feedforward_layers", 2,
                      "Number of layers in the feedforward subcomponents of the transformer.")
 flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings.")
 flags.DEFINE_integer("beam_width", 3, "Width of the beam during the decoding beam search phase.")
-flags.DEFINE_integer("num_serialized_models_to_keep", 5, "Number of serialized trained models to store.")
+flags.DEFINE_integer("num_serialized_models_to_keep", 1, "Number of serialized trained models to store.")
 flags.DEFINE_bool("use_pretrained_weights", False, "Whether to initialize weights with pretrained weights. "
                                                   "If so, the CONFIG_MAPPING is used to determine weights. "
                                                   "Only works for hf_baseline so far ;)") #TODO maybe expand this to own model
@@ -66,7 +66,6 @@ flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned b
 
 FLAGS(sys.argv)
 FLAGS.device_idxs = FLAGS.device_idxs[:FLAGS.max_GPUs]
-print(FLAGS.local_rank)
 print(f'Using GPUs: {FLAGS.device_idxs} unless code changes this flag')
 
 #TODO adapt this to per-experiment configs

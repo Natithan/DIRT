@@ -30,10 +30,7 @@ def get_loader(dataset, distributed):
                             batch_size=FLAGS.d_batch,
                             shuffle=True)
 
-def main(world_size,rank):
-    distributed = (world_size > 1)
-    if distributed:
-        setup(rank, world_size)
+def main(_):
     # Create folders and files to store results and configs
     run_dir = Path(FLAGS.model_folder, FLAGS.model, FLAGS.run_name)
     if not os.path.exists(run_dir):
@@ -51,13 +48,24 @@ def main(world_size,rank):
                                                        ('train', 'test', 'val', 'vocab'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],
                             vocab)
+
+    distributed_wrapper(train,model, run_dir, train_dataset, val_dataset)
+
+    model(test_dataset)
+
+
+def train(world_size,rank,model, run_dir, train_dataset, val_dataset):
+
+    # If distributed, this is now in one of the threads. Setup makes sure it is in sync with other threads
+    distributed = (world_size > 1)
+    if distributed:
+        setup(rank, world_size)
+
     model_device = f'cuda:{FLAGS.device_idxs[0]}' if len(FLAGS.device_idxs) != 0 else 'cpu'
     model.cuda(model_device)
     optimizer = optim.Adam(model.parameters(), lr=FLAGS.learning_rate)
-    loader = get_loader(train_dataset,distributed)
+    loader = get_loader(train_dataset, distributed)
     val_loader = get_loader(val_dataset, distributed)
-
-
     checkpointer = Checkpointer(serialization_dir=run_dir,
                                 num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep)
     trainer = GradientDescentTrainer(model=model,
@@ -74,20 +82,19 @@ def main(world_size,rank):
                                      cuda_device=FLAGS.device_idxs[0])
     trainer.train()
 
-    model(test_dataset)
     if distributed:
         cleanup()
 
 
-def main_distributed_wrapper(_):
-    nb_gpus = len(FLAGS.device_idxs)
-    if nb_gpus > 1:
-        mp.spawn(main,
-                 args=(nb_gpus,),
-                 nprocs=nb_gpus,
+def distributed_wrapper(function,*args):
+    nb_GPUs = len(FLAGS.device_idxs)
+    if nb_GPUs > 1:
+        mp.spawn(function,
+                 args=(nb_GPUs,) + args,
+                 nprocs=nb_GPUs,
                  join=True)
     else:
-        main(world_size=0,rank=0)
+        function(world_size=0,rank=0)
 
 if __name__ == '__main__':
-    app.run(main_distributed_wrapper)
+    app.run(main)

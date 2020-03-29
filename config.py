@@ -66,7 +66,6 @@ flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned b
 
 FLAGS(sys.argv)
 FLAGS.device_idxs = FLAGS.device_idxs[:FLAGS.max_GPUs]
-print(f'Using GPUs: {FLAGS.device_idxs} unless code changes this flag')
 
 #TODO adapt this to per-experiment configs
 

@@ -16,7 +16,6 @@ def get_gpus_with_enough_memory(minimum_memory):
     used_gpus = np.argwhere(np.array(memory_available) > minimum_memory).squeeze().tolist()
     if not isinstance(used_gpus, Iterable):
         used_gpus = [used_gpus]
-    print(used_gpus)
     return used_gpus
 
 
@@ -80,7 +79,7 @@ def cleanup():
 
 def setup(rank,world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ['MASTER_PORT'] = '12356'
 
     # initialize the process group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)

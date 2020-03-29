@@ -13,9 +13,10 @@ import torch.optim as optim
 from absl import app
 from config import FLAGS
 
-from text_input_pipeline import GutenbergReader
+from text_input_pipeline import get_data_dict
 from allennlp.training import GradientDescentTrainer, Checkpointer
 
+from trainer import MyTrainer
 from util import cleanup, setup
 
 
@@ -42,8 +43,7 @@ def main(_):
     open(flagfile, "x")
     FLAGS.append_flags_into_file(flagfile)
 
-    reader = GutenbergReader()
-    data_dict = reader.get_data_dict()
+    data_dict = get_data_dict()
     train_dataset, test_dataset, val_dataset, vocab = (data_dict[key] for key in
                                                        ('train', 'test', 'val', 'vocab'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],
@@ -54,22 +54,20 @@ def main(_):
     model(test_dataset)
 
 
-def train(world_size,rank,model, run_dir, train_dataset, val_dataset):
+def train(rank,world_size,model, run_dir, train_dataset, val_dataset):
 
     # If distributed, this is now in one of the threads. Setup makes sure it is in sync with other threads
     distributed = (world_size > 1)
-    print(f'Distributed?: {distributed}')
     if distributed:
         setup(rank, world_size)
-
-    model_device = f'cuda:{FLAGS.device_idxs[0]}' if len(FLAGS.device_idxs) != 0 else 'cpu'
-    model.cuda(model_device)
+    cuda_id = FLAGS.device_idxs[rank]
+    model.cuda(cuda_id)
     optimizer = optim.Adam(model.parameters(), lr=FLAGS.learning_rate)
     loader = get_loader(train_dataset, distributed)
     val_loader = get_loader(val_dataset, distributed)
     checkpointer = Checkpointer(serialization_dir=run_dir,
                                 num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep)
-    trainer = GradientDescentTrainer(model=model,
+    trainer = MyTrainer(model=model,
                                      optimizer=optimizer,
                                      data_loader=loader,
                                      validation_data_loader=val_loader,
@@ -80,7 +78,7 @@ def train(world_size,rank,model, run_dir, train_dataset, val_dataset):
                                      checkpointer=checkpointer,
                                      distributed=distributed,
                                      world_size=FLAGS.max_GPUs,
-                                     cuda_device=FLAGS.device_idxs[0])
+                                     cuda_device=cuda_id)
     trainer.train()
 
     if distributed:
@@ -88,6 +86,7 @@ def train(world_size,rank,model, run_dir, train_dataset, val_dataset):
 
 
 def distributed_wrapper(function,*args):
+    print(f'Using GPUs: {FLAGS.device_idxs} unless code changes this flag')
     nb_GPUs = len(FLAGS.device_idxs)
     if nb_GPUs > 1:
         mp.spawn(function,
@@ -95,7 +94,7 @@ def distributed_wrapper(function,*args):
                  nprocs=nb_GPUs,
                  join=True)
     else:
-        function(world_size=0,rank=0)
+        function(0,0,*args)
 
 if __name__ == '__main__':
     app.run(main)

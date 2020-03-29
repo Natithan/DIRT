@@ -58,6 +58,7 @@ def train(world_size,rank,model, run_dir, train_dataset, val_dataset):
 
     # If distributed, this is now in one of the threads. Setup makes sure it is in sync with other threads
     distributed = (world_size > 1)
+    print(f'Distributed?: {distributed}')
     if distributed:
         setup(rank, world_size)
 

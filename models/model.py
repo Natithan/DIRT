@@ -211,10 +211,7 @@ class EncoderBlock(nn.Module):
 
     def forward(self, in_state, padding_mask,
                 cum_layer_loss=0):
-        att_out = itemgetter('activations')(
-            self.multihead_attention(in_state, in_state, padding_mask))
-        out_state = self.feedforward(att_out)
-
+        assert FLAGS.use_DIR, "For this branch: assuming DIR"
         # Top-down regression
         if FLAGS.use_DIR:
             mask = (torch.rand(in_state.shape[1]) > FLAGS.masking_fraction).cuda(
@@ -226,9 +223,13 @@ class EncoderBlock(nn.Module):
             masked_out_state = self.feedforward(masked_att_out) #TODO should add activation? And should add sometimes-not-masking?
             predicted_in_state = self.top_down_regressor(masked_out_state)
             layer_loss = self.contrastive_L2_loss(in_state, predicted_in_state, mask)
+
+            predicted_att_out = itemgetter('activations')(
+            self.multihead_attention(predicted_in_state, predicted_in_state, padding_mask))
+            predicted_out_state = self.feedforward(predicted_att_out)
         else:
             layer_loss = 0
-        return out_state, padding_mask, layer_loss + cum_layer_loss
+        return predicted_out_state, padding_mask, layer_loss + cum_layer_loss #working with predicted out state rather than real one
 
     def contrastive_L2_loss(self, in_state, predicted_in_state, mask):
         if FLAGS.d_batch <= 1:

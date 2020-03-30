@@ -19,7 +19,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_integer("d_batch", 8, "Batch size. If use_DIR, this is also the number of negative samples + 1")
 flags.DEFINE_string("model", "my_model", "Name of the model to use (see MODEL_MAPPING)")
 flags.DEFINE_bool("use_DIR",False,"Whether to use distributed internal regression to create additional losses")
-flags.DEFINE_float("DIR_loss_fraction",0.95,"Fraction of the total loss that the distributed regression loss accounts for")
+flags.DEFINE_float("DIR_loss_fraction",0.5,"Fraction of the total loss that the distributed regression loss accounts for")
 flags.DEFINE_string("tokenizer", "", "Which tokenizer to use. Currently everything defaults to RobertaTokenizer :P")
 flags.DEFINE_string("objective", "simple_mlm",
                     "Name of the denoising objective to use (see OBJECTIVE_MAPPING)")

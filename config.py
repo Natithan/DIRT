@@ -64,6 +64,10 @@ flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same t
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")
 
+# Jiant cl arguments
+flags.DEFINE_string("config_file","", "Location of the file that contains the flow-control-config")
+
+
 FLAGS(sys.argv)
 FLAGS.device_idxs = FLAGS.device_idxs[:FLAGS.max_GPUs]
 

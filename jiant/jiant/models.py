@@ -233,10 +233,10 @@ def build_model(args, vocab, pretrained_embs, tasks, cuda_devices):
     # Build embeddings.
     cove_layer = None
     if args.input_module.startswith("dirt-"): #TODO finish
-        from jiant.huggingface_transformers_interface.modules import BertEmbedderModule
+        from jiant.huggingface_transformers_interface.modules import DirtEmbedderModule
 
-        log.info(f"Using BERT model ({args.input_module}).")
-        embedder = BertEmbedderModule(args)
+        log.info(f"Using DIRT model ({args.input_module}).")
+        embedder = DirtEmbedderModule(args)
         d_emb = embedder.get_output_dim()
     elif args.input_module.startswith("bert-"):
         from jiant.huggingface_transformers_interface.modules import BertEmbedderModule

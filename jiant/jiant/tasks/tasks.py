@@ -2215,6 +2215,10 @@ class Wiki103Classification(PairClassificationTask):
             example_counts[split] = sum(1 for line in open(split_path)) - 1
         self.example_counts = example_counts
 
+@register_task('DIR-MLM',rel_path='Gutenberg/')
+#TODO finish this
+class DIR_MLMTask():
+    pass
 
 # Task class for DisSent with Wikitext 103 only considering clauses from within a single sentence
 # Data sets should be prepared as described in Nie, Bennett, and Goodman (2017)

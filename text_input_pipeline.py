@@ -26,41 +26,6 @@ class GutenbergSplitDataset(Dataset):
         self.blob_path = blob_path
         self.data = self.get_data()
 
-    # def __iter__(self):
-    #     total_yields = 0
-    #     max_raw_seq_length = FLAGS.max_seq_length - 2  # Exclusing bos and eos tokens
-    #     number_of_files = len(list(os.scandir(self.text_data_path)))
-    #     for i, file in enumerate(os.scandir(self.text_data_path)):
-    #         if not FLAGS.mini:
-    #             print(f'Reading file {i} out of {number_of_files} in {self.text_data_path}')
-    #         if FLAGS.mini:
-    #             if i > 0:
-    #                 break
-    #         with open(file, 'rb') as f:
-    #             running_sequence = []
-    #             nb_sequences = 0
-    #
-    #             for j, line in enumerate(f):
-    #                 token_ids = self.token_indexer.encode(line.decode("utf-8", errors='ignore'),
-    #                                                       add_special_tokens=False,
-    #                                                       add_prefix_space=True)  # False to avoid inserting <s> and </s> tokens around every line, as a sequence is made of multiple lines
-    #                 running_sequence += token_ids
-    #                 if len(running_sequence) >= max_raw_seq_length:
-    #                     current_sequence = running_sequence[:max_raw_seq_length]
-    #                     current_sequence = self.token_indexer.encode(current_sequence,
-    #                                                                  add_special_tokens=True)  # Now add start and end tokens
-    #                     running_sequence = running_sequence[max_raw_seq_length:]
-    #                     nb_sequences += 1
-    #
-    #                     if FLAGS.mini:
-    #                         if nb_sequences < 2:
-    #                             continue
-    #                         if nb_sequences > 4:
-    #                             break
-    #                     total_yields += 1
-    #
-    #                     yield torch.tensor(current_sequence).unsqueeze(0)
-
     def __getitem__(self, index):
         return self.data[index]
     def __len__(self):

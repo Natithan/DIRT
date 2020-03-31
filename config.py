@@ -9,7 +9,7 @@ from pathlib2 import Path
 from transformers import RobertaTokenizer
 
 from constants import READ_ONLY_ROOT, WRITE_ROOT
-from util import get_freer_gpu, DefaultOrderedDict, get_gpus_with_enough_memory
+from flag_util import get_freer_gpu, DefaultOrderedDict, get_gpus_with_enough_memory
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +64,24 @@ flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same t
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")
 
+# Jiant cl arguments
+flags.DEFINE_string("config_file","", "Location of the file that contains the flow-control-config")
+flags.DEFINE_string("pretrained_model","","Name of the run whose best checkpoint will be used as pretrained model."
+                                       " Ignored if saved_pretrained_model_path is provided.")
+flags.DEFINE_string("saved_pretrained_model_path","",
+                    "Path to a checkpoint of a pretrained model. "
+                    "If \"pretrained_model\" flag is provided, equals WRITE_ROOT/output/my_model/<pretrained_model>/best.th")
+
+flags.DEFINE_string("cache_dir",Path(READ_ONLY_ROOT,"cache").as_posix(),"Directory to store a cache of 🤗 transformers tokenizer ")
+
+
+
 FLAGS(sys.argv)
 FLAGS.device_idxs = FLAGS.device_idxs[:FLAGS.max_GPUs]
+assert not (FLAGS.pretrained_model and FLAGS.saved_pretrained_model_path), \
+    "You should specify only one of \"saved_pretrained_model_path\" and \"saved_pretrained_model_path\""
+if FLAGS.pretrained_model:
+    FLAGS.saved_pretrained_model_path = Path(WRITE_ROOT,"output","my_model",FLAGS.pretrained_model,"best.th").as_posix()
 
 #TODO adapt this to per-experiment configs
 
@@ -84,7 +100,7 @@ OBJECTIVE_MAPPING = OrderedDict(
     ]
 )
 TOKENIZER_MAPPING = DefaultOrderedDict(
-    lambda: RobertaTokenizer.from_pretrained(CONFIG_MAPPING['huggingface_baseline_encoder']),
+    lambda: RobertaTokenizer.from_pretrained(CONFIG_MAPPING['huggingface_baseline_encoder'],cache_dir=FLAGS.cache_dir),
     [
     ]
     )

@@ -5,6 +5,7 @@ from operator import itemgetter
 
 import math
 
+from allennlp.data import Vocabulary
 from allennlp.models import Model
 import torch
 import torch.nn as nn
@@ -12,20 +13,20 @@ from torch.autograd import Variable
 from torch import tensor
 from config import FLAGS, TOKENIZER_MAPPING
 from constants import DECODER_START_TOKEN
-from util import masked_MSE_loss
+from flag_util import masked_MSE_loss
 
 
 class FullModel(Model):
-    def __init__(self, vocab, do_teacher_forcing=True):
+    def __init__(self, do_teacher_forcing=True):
         """
         """
-        super().__init__(vocab)
+        super().__init__(Vocabulary())
         self.embedder = AlbertEmbedder()
         self.encoder = MySequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
         if FLAGS.use_decoder:
             self.decoder = MySequential(
                 *[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
-        self.predictor = Predictor()
+        self.lm_head = LMHead()
         self.teacher_forcing = do_teacher_forcing
         self.metrics_dict = {}
 
@@ -44,7 +45,7 @@ class FullModel(Model):
     def decode_idxs_to_probabilities(self, decoder_input_token_idxs, encoded, padding_mask):
         decoder_input_embeddings, _ = self.embedder(decoder_input_token_idxs)
         decoded, _, _, cum_layer_loss = self.decoder(nn.Dropout()(decoder_input_embeddings), encoded, padding_mask)
-        vocab_scores = self.predictor(decoded)
+        vocab_scores = self.lm_head(decoded)
         return vocab_scores, cum_layer_loss
 
     def forward(self, masked_ids, padding_mask, masked_lm_labels=None):
@@ -77,7 +78,7 @@ class FullModel(Model):
                 vocab_scores, output_idxs = self.beam_decode(d_batch, encoded, max_target_seq_length, padding_mask)
                 result_dict['output_idxs'] = output_idxs
         else:
-            vocab_scores = self.predictor(encoded)
+            vocab_scores = self.lm_head(encoded)
 
         if targets is not None:
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
@@ -157,7 +158,7 @@ def layer_normalize(param):
     return (param - mean_expanded) / st_dev_expanded
 
 
-class Predictor(nn.Module):
+class LMHead(nn.Module):
     """
     Outputs a probability distribution over the vocabulary given a sequence of hidden states
     """

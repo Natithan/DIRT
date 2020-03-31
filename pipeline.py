@@ -44,10 +44,9 @@ def main(_):
     FLAGS.append_flags_into_file(flagfile)
 
     data_dict = get_data_dict()
-    train_dataset, test_dataset, val_dataset, vocab = (data_dict[key] for key in
+    train_dataset, test_dataset, val_dataset = (data_dict[key] for key in
                                                        ('train', 'test', 'val', 'vocab'))
-    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],
-                            vocab)
+    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model])
 
     distributed_wrapper(train,model, run_dir, train_dataset, val_dataset)
 

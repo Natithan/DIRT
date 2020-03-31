@@ -53,7 +53,7 @@ class FullModel(Model):
             0]  # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
         max_target_seq_length = int(FLAGS.max_seq_length * FLAGS.masking_fraction * 2 + 1) if (
                 masked_lm_labels is None) else masked_lm_labels.shape[-1]  # Longest length if no adjacent masks
-        targets = self.process_targets_for_loss(masked_lm_labels, max_target_seq_length)
+        targets = self.process_targets_for_loss(masked_lm_labels, max_target_seq_length) #TODO adjust model to be able to deal with downstream stage, where no masked_lm_labels
 
         # ENCODING
         embedded_inputs = self.embedder(masked_ids)

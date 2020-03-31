@@ -24,7 +24,6 @@ class DirtEmbedderModule(nn.Module):
 
         self.output_mode = args.transformers_output_mode
         self.input_module = args.input_module
-        self.max_pos = None
         self.tokenizer_required = input_module_tokenizer_name(args.input_module)
 
         # If set, treat these special tokens as part of input segments other than A/B.
@@ -34,7 +33,7 @@ class DirtEmbedderModule(nn.Module):
         #     args.input_module, cache_dir=self.cache_dir, output_hidden_states=True
         # )
         self.model = load_pretrained_model()
-        self.max_pos = FLAGS.relative_attention_num_buckets
+        self.max_pos = None
 
         self.tokenizer = transformers.RobertaTokenizer.from_pretrained(
             transformer_input_module_to_tokenizer_name[args.input_module], cache_dir=self.cache_dir
@@ -66,7 +65,7 @@ class DirtEmbedderModule(nn.Module):
             lex_seq = self.model.embeddings.word_embeddings(ids)
             lex_seq = self.model.embeddings.LayerNorm(lex_seq)
         if self.output_mode != "only":
-            _, output_pooled_vec, hidden_states = self.model(ids, attention_mask=input_mask)
+            _, output_pooled_vec, hidden_states = self.model(ids,padding_mask=input_mask)
         return self.prepare_output(lex_seq, hidden_states, input_mask)
 
     def get_pretrained_lm_head(self):
@@ -151,7 +150,7 @@ class DirtEmbedderModule(nn.Module):
         if self.max_pos is not None:
             assert (
                 ids.size()[-1] <= self.max_pos
-            ), "input length exceeds position embedding capacity, reduce max_seq_len" #TODO Nathan fix this
+            ), "input length exceeds position embedding capacity, reduce max_seq_len"
 
         sent[self.tokenizer_required] = ids
         return ids, input_mask

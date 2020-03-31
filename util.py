@@ -1,8 +1,11 @@
 import os
+from collections import OrderedDict
+from copy import deepcopy
+
 import torch
 from torch import distributed as dist
 
-from config import FLAGS
+from config import FLAGS, MODEL_RELEVANT_FLAGS
 from wrappers import MLMModelWrapper, MODEL_MAPPING
 
 
@@ -22,7 +25,27 @@ def setup(rank,world_size):
     torch.manual_seed(42)
 
 def load_pretrained_model():
-    wrapped_model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model]) #TODO get relevant values from loaded model's flagfile
     model_path = FLAGS.saved_pretrained_model_path
-    wrapped_model.load_state_dict(torch.load(model_path, map_location=torch.device(FLAGS.device_idxs[0])))
+    flagfile_path = model_path.replace('best.th', 'flagfile.txt')
+    model_FLAGS = deepcopy(FLAGS)
+    model_FLAGS(["", f"--flagfile={flagfile_path}"]) # Normally first arg is the name of the file to run, not relevant here
+    run_flag_dict = FLAGS.__dict__['__flags']
+    model_flag_dict = model_FLAGS.__dict__['__flags']
+    for f in MODEL_RELEVANT_FLAGS:
+        updated_flags=[]
+        if not (run_flag_dict[f].value == model_flag_dict[f].value):
+            run_flag_dict[f].value = model_flag_dict[f].value
+            updated_flags.append(f)
+        if updated_flags:
+            print(f"Changed the following flags to that of the pretrained model: {updated_flags}")
+    wrapped_model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model])
+
+    # A hack because I renamed one of the models modules :P
+    old_state_dict = torch.load(model_path, map_location=torch.device(FLAGS.device_idxs[0]))
+    updated_state_dict = OrderedDict(
+        (k.replace("model.predictor", "model.lm_head"), v) for k, v in old_state_dict.items())
+
+    wrapped_model.load_state_dict(updated_state_dict)
+    unwrapped_model = wrapped_model.model
+    return unwrapped_model
 

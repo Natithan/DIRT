@@ -14,6 +14,7 @@ import sys
 from jiant.__main__ import main as jiant_main
 
 def main(_):
+    print(f'Using GPUs {FLAGS.device_idxs}')
     HOSTNAME = subprocess.check_output('hostname').decode().strip()
     os.environ["JIANT_PROJECT_PREFIX"] = f'/cw/working-{HOSTNAME}/nathan/phd/output'
     jiant_main(sys.argv[1:])

@@ -383,8 +383,8 @@ def align_bytebpe(text: Text, bytebpe_tokenizer: Tokenizer) -> Tuple[TokenAligne
 
 
 def get_aligner_fn(tokenizer_name: Text):
-    """Given the tokenzier_name, return the corresponding alignment function.
-    An alignment function modified the tokenized input to make it close to source token,
+    """Given the tokenizer_name, return the corresponding alignment function.
+    An alignment function modifies the tokenized input to make it close to source token,
     and choose a space tokenizer with its word-boundary at the same side as tokenizer_name,
     hence the source (from space tokenizer) and target (from tokenizer_name) is sufficiently close.
     Use TokenAligner to project token index from source to target.
@@ -405,7 +405,7 @@ def get_aligner_fn(tokenizer_name: Text):
         return functools.partial(
             align_sentencepiece, sentencepiece_tokenizer=sentencepiece_tokenizer
         )
-    elif tokenizer_name.startswith("roberta-") or tokenizer_name.startswith("gpt2"):
+    elif tokenizer_name.startswith("roberta-") or tokenizer_name.startswith("gpt2") or tokenizer_name.startswith("dirt"):
         bytebpe_tokenizer = get_tokenizer(tokenizer_name)
         return functools.partial(align_bytebpe, bytebpe_tokenizer=bytebpe_tokenizer)
     else:

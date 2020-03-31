@@ -10,6 +10,8 @@ import os
 from sacremoses import MosesDetokenizer
 from sacremoses import MosesTokenizer as SacreMosesTokenizer
 from nltk.tokenize.simple import SpaceTokenizer
+
+from config import TOKENIZER_MAPPING, FLAGS
 from jiant.huggingface_transformers_interface import input_module_uses_transformers
 from transformers import (
     BertTokenizer,
@@ -93,7 +95,9 @@ class MosesTokenizer(Tokenizer):
 @functools.lru_cache(maxsize=8, typed=False)
 def get_tokenizer(tokenizer_name):
     log.info(f"\tLoading Tokenizer {tokenizer_name}")
-    if tokenizer_name.startswith("bert-"):
+    if tokenizer_name.startswith("dirt"):
+        tokenizer = TOKENIZER_MAPPING[FLAGS.model]
+    elif tokenizer_name.startswith("bert-"):
         do_lower_case = tokenizer_name.endswith("uncased")
         tokenizer = BertTokenizer.from_pretrained(tokenizer_name, do_lower_case=do_lower_case)
     elif tokenizer_name.startswith("roberta-"):

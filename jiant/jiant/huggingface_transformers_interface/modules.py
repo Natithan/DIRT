@@ -8,23 +8,36 @@ from allennlp.modules import scalar_mix
 
 import transformers
 
+from config import FLAGS
 from jiant.utils.options import parse_task_list_arg
 from jiant.utils import utils
-from jiant.huggingface_transformers_interface import input_module_tokenizer_name
-from model import FullModel
+from jiant.huggingface_transformers_interface import input_module_tokenizer_name, \
+    transformer_input_module_to_tokenizer_name
+from util import load_pretrained_model
 
 
 class DirtEmbedderModule(nn.Module):
     def __init__(self, args):
         super().__init__()
+        self.cache_dir = FLAGS.cache_dir
+        utils.maybe_make_dir(self.cache_dir)
+
+        self.output_mode = args.transformers_output_mode
+        self.input_module = args.input_module
+        self.max_pos = None
+        self.tokenizer_required = input_module_tokenizer_name(args.input_module)
+
+        # If set, treat these special tokens as part of input segments other than A/B.
+        self._SEG_ID_CLS = None
+        self._SEG_ID_SEP = None
         # self.model = transformers.RobertaModel.from_pretrained(
         #     args.input_module, cache_dir=self.cache_dir, output_hidden_states=True
         # )
-        self.model = FullModel
-        # self.max_pos = self.model.config.max_position_embeddings
+        self.model = load_pretrained_model()
+        self.max_pos = FLAGS.relative_attention_num_buckets
 
         self.tokenizer = transformers.RobertaTokenizer.from_pretrained(
-            args.input_module, cache_dir=self.cache_dir
+            transformer_input_module_to_tokenizer_name[args.input_module], cache_dir=self.cache_dir
         )  # TODO: Speed things up slightly by reusing the previously-loaded tokenizer.
         self._sep_id = self.tokenizer.convert_tokens_to_ids("</s>")
         self._cls_id = self.tokenizer.convert_tokens_to_ids("<s>")
@@ -57,12 +70,159 @@ class DirtEmbedderModule(nn.Module):
         return self.prepare_output(lex_seq, hidden_states, input_mask)
 
     def get_pretrained_lm_head(self):
-        model_with_lm_head = transformers.RobertaForMaskedLM.from_pretrained(
-            self.input_module, cache_dir=self.cache_dir
-        )
-        lm_head = model_with_lm_head.lm_head
-        lm_head.predictions.decoder.weight = self.model.embeddings.word_embeddings.weight
+        # model_with_lm_head = transformers.RobertaForMaskedLM.from_pretrained(
+        #     self.input_module, cache_dir=self.cache_dir
+        # )
+        lm_head = self.model.lm_head
+        lm_head.predictions.decoder.weight = self.model.embeddings.word_embeddings.weight #TODO huh, then why load the roberta head in the first place?
         return nn.Sequential(lm_head, nn.LogSoftmax(dim=-1))
+
+    def parameter_setup(self, args):
+        # Set trainability of this module.
+        for param in self.model.parameters():
+            param.requires_grad = bool(args.transfer_paradigm == "finetune")
+
+        self.num_layers = FLAGS.nb_encoder_layers
+        if args.transformers_max_layer >= 0:
+            self.max_layer = args.transformers_max_layer
+            assert self.max_layer <= self.num_layers
+        else:
+            self.max_layer = self.num_layers
+
+        if args.transfer_paradigm == "frozen":
+            if isinstance(
+                self, (OpenAIGPTEmbedderModule, GPT2EmbedderModule, TransfoXLEmbedderModule)
+            ):
+                log.warning(
+                    "NOTE: OpenAI GPT, GPT-2 and Transformer-XL add new tokens for classification"
+                    "tasks, under 'frozen' transfer_paradigm, their embeddings will not be trained"
+                )
+
+        # Configure scalar mixing, ELMo-style.
+        if self.output_mode == "mix":
+            if args.transfer_paradigm == "frozen":
+                log.warning(
+                    "NOTE: transformers_output_mode='mix', so scalar "
+                    "mixing weights will be fine-tuned even if BERT "
+                    "model is frozen."
+                )
+            # TODO: if doing multiple target tasks, allow for multiple sets of
+            # scalars. See the ELMo implementation here:
+            # https://github.com/allenai/allennlp/blob/master/allennlp/modules/elmo.py#L115
+            assert len(parse_task_list_arg(args.target_tasks)) <= 1, (
+                "transformers_output_mode='mix' only supports a single set of "
+                "scalars (but if you need this feature, see the TODO in "
+                "the code!)"
+            )
+            # Always have one more mixing weight, for lexical layer.
+            self.scalar_mix = scalar_mix.ScalarMix(self.max_layer + 1, do_layer_norm=False)
+
+    def correct_sent_indexing(self, sent):
+        """ Correct id difference between transformers and AllenNLP.
+        The AllenNLP indexer adds'@@UNKNOWN@@' token as index 1, and '@@PADDING@@' as index 0
+
+        args:
+            sent: batch dictionary, in which
+                sent[self.tokenizer_required]: <long> [batch_size, var_seq_len] input token IDs
+
+        returns:
+            ids: <long> [bath_size, var_seq_len] corrected token IDs
+            input_mask: <long> [bath_size, var_seq_len] mask of input sequence
+        """
+        assert (
+            self.tokenizer_required in sent
+        ), "transformers cannot find correspondingly tokenized input"
+        ids = sent[self.tokenizer_required]
+
+        input_mask = (ids != 0).long()
+        pad_mask = (ids == 0).long()
+        # map AllenNLP @@PADDING@@ to _pad_id in specific transformer vocab
+        unk_mask = (ids == 1).long()
+        # map AllenNLP @@UNKNOWN@@ to _unk_id in specific transformer vocab
+        valid_mask = (ids > 1).long()
+        # shift ordinary indexes by 2 to match pretrained token embedding indexes
+        if self._unk_id is not None:
+            ids = (ids - 2) * valid_mask + self._pad_id * pad_mask + self._unk_id * unk_mask
+        else:
+            ids = (ids - 2) * valid_mask + self._pad_id * pad_mask
+            assert (
+                unk_mask == 0
+            ).all(), "out-of-vocabulary token found in the input, but _unk_id of transformers model is not specified"
+        if self.max_pos is not None:
+            assert (
+                ids.size()[-1] <= self.max_pos
+            ), "input length exceeds position embedding capacity, reduce max_seq_len" #TODO Nathan fix this
+
+        sent[self.tokenizer_required] = ids
+        return ids, input_mask
+
+    def prepare_output(self, lex_seq, hidden_states, input_mask):
+        """
+        Convert the output of the transformers module to a vector sequence as expected by jiant.
+
+        args:
+            lex_seq: The sequence of input word embeddings as a tensor (batch_size, sequence_length, hidden_size).
+                     Used only if output_mode = "only".
+            hidden_states: A list of sequences of model hidden states as tensors (batch_size, sequence_length, hidden_size).
+            input_mask: A tensor with 1s in positions corresponding to non-padding tokens (batch_size, sequence_length).
+
+        returns:
+            h: Output embedding as a tensor (batch_size, sequence_length, output_dim)
+        """
+        available_layers = hidden_states[: self.max_layer + 1]
+
+        if self.output_mode in ["none", "top"]:
+            h = available_layers[-1]
+        elif self.output_mode == "only":
+            h = lex_seq
+        elif self.output_mode == "cat":
+            h = torch.cat([available_layers[-1], lex_seq], dim=2)
+        elif self.output_mode == "mix":
+            h = self.scalar_mix(available_layers, mask=input_mask)
+        else:
+            raise NotImplementedError(f"output_mode={self.output_mode}" " not supported.")
+
+        return h
+
+    def get_output_dim(self):
+        if self.output_mode == "cat":
+            return 2 * FLAGS.d_hidden
+        else:
+            return FLAGS.d_hidden
+
+    def get_seg_ids(self, token_ids, input_mask):
+        """ Dynamically build the segment IDs for a concatenated pair of sentences
+        Searches for index _sep_id in the tensor. Supports BERT or XLNet-style padding.
+        Sets padding tokens to segment zero.
+
+        args:
+            token_ids (torch.LongTensor): batch of token IDs
+            input_mask (torch.LongTensor): mask of token_ids
+
+        returns:
+            seg_ids (torch.LongTensor): batch of segment IDs
+
+        example:
+        > sents = ["[CLS]", "I", "am", "a", "cat", ".", "[SEP]", "You", "like", "cats", "?", "[SEP]", "[PAD]"]
+        > token_tensor = torch.Tensor([[vocab[w] for w in sent]]) # a tensor of token indices
+        > seg_ids = get_seg_ids(token_tensor, torch.LongTensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]))
+        > assert seg_ids == torch.LongTensor([0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0])
+        """
+        # TODO: creating sentence segment id(and language segment id for XLM) is more suitable for preprocess
+        sep_idxs = (token_ids == self._sep_id).long()
+        sep_count = torch.cumsum(sep_idxs, dim=-1) - sep_idxs
+        seg_ids = sep_count * input_mask
+
+        if self._SEG_ID_CLS is not None:
+            seg_ids[token_ids == self._cls_id] = self._SEG_ID_CLS
+
+        if self._SEG_ID_SEP is not None:
+            seg_ids[token_ids == self._sep_id] = self._SEG_ID_SEP
+
+        return seg_ids
+
+
+
 
 class HuggingfaceTransformersEmbedderModule(nn.Module):
     """ Shared code for transformers wrappers.
@@ -241,7 +401,7 @@ class HuggingfaceTransformersEmbedderModule(nn.Module):
     @staticmethod
     def apply_boundary_tokens(s1, s2=None, get_offset=False):
         """
-        A function that appliese the appropriate EOS/SOS/SEP/CLS tokens to token sequence or
+        A function that applies the appropriate EOS/SOS/SEP/CLS tokens to token sequence or
         token sequence pair for most tasks.
         This function should be implmented in subclasses.
 
@@ -251,7 +411,7 @@ class HuggingfaceTransformersEmbedderModule(nn.Module):
             get_offset: bool, returns offset if True
 
         returns
-            s: list[str], token sequence with boundry tokens
+            s: list[str], token sequence with boundary tokens
             offset_s1 (optional): int, index offset of s1
             offset_s2 (optional): int, index offset of s2
         """
@@ -262,7 +422,7 @@ class HuggingfaceTransformersEmbedderModule(nn.Module):
         """
         A function that appliese the appropriate EOS/SOS/SEP/CLS tokens to a token sequence for
         language modeling tasks.
-        This function should be implmented in subclasses.
+        This function should be implemented in subclasses.
 
         args:
             s1: list[str], tokens from sentence
@@ -276,7 +436,7 @@ class HuggingfaceTransformersEmbedderModule(nn.Module):
 
     def forward(self, sent, task_name):
         """ Run transformers model and return output representation
-        This function should be implmented in subclasses.
+        This function should be implemented in subclasses.
 
         args:
             sent: batch dictionary, in which

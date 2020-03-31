@@ -8,6 +8,8 @@ To debug this, run with -m ipdb:
 import logging as log
 from typing import Iterable
 
+from config import FLAGS
+
 log.basicConfig(
     format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
 )  # noqa
@@ -97,7 +99,7 @@ def handle_arguments(cl_arguments: Iterable[str]) -> argparse.Namespace:
     )
     parser.add_argument("--tensorboard_port", type=int, default=6006)
 
-    return parser.parse_args(cl_arguments)
+    return parser.parse_known_args()[0] # To let absl FLAGS deal with other args
 
 
 def setup_target_task_training(args, target_tasks, model, strict):
@@ -536,7 +538,7 @@ def load_model_for_target_train_run(args, ckpt_path, model, strict, task, cuda_d
 
 def main(cl_arguments):
     """ Train a model for multitask-training."""
-    cl_args = handle_arguments(cl_arguments)
+    cl_args = handle_arguments(cl_arguments) #TODO figure out way to let parser and absl FLAGS play together
     args = config.params_from_file(cl_args.config_file, cl_args.overrides)
     # Check for deprecated arg names
     check_arg_name(args)
@@ -544,7 +546,9 @@ def main(cl_arguments):
     # Load tasks
     log.info("Loading tasks...")
     start_time = time.time()
-    cuda_device = parse_cuda_list_arg(args.cuda)
+    # cuda_device = parse_cuda_list_arg(args.cuda)
+    cuda_device = FLAGS.device_idxs
+
     pretrain_tasks, target_tasks, vocab, word_embs = build_tasks(args, cuda_device)
     tasks = sorted(set(pretrain_tasks + target_tasks), key=lambda x: x.name)
     log.info("\tFinished loading tasks in %.3fs", time.time() - start_time)

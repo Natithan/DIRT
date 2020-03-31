@@ -232,7 +232,7 @@ def build_model(args, vocab, pretrained_embs, tasks, cuda_devices):
 
     # Build embeddings.
     cove_layer = None
-    if args.input_module.startswith("dirt-"): #TODO finish
+    if args.input_module.startswith("dirt"): #TODO finish
         from jiant.huggingface_transformers_interface.modules import DirtEmbedderModule
 
         log.info(f"Using DIRT model ({args.input_module}).")
@@ -301,7 +301,7 @@ def build_model(args, vocab, pretrained_embs, tasks, cuda_devices):
     # Build model and classifiers
     model = MultiTaskModel(args, sent_encoder, vocab, cuda_devices)
     build_task_modules(args, tasks, model, d_task_input, d_emb, embedder, vocab)
-    model = model.cuda() if uses_cuda(cuda_devices) else model
+    model = model.cuda(cuda_devices[0]) if uses_cuda(cuda_devices) else model # Make sure to put model on a free GPU
     if isinstance(cuda_devices, list):
         model = nn.DataParallel(model, device_ids=cuda_devices)
 

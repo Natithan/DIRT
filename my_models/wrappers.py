@@ -11,9 +11,9 @@ from transformers import RobertaForMaskedLM, RobertaTokenizer
 
 
 class MLMModelWrapper(Model):
-    def __init__(self, model, vocab):
-        super().__init__(vocab)
-        self.model = model(vocab)
+    def __init__(self, model):
+        super().__init__(Vocabulary())
+        self.model = model()
         self.objective = OBJECTIVE_MAPPING[FLAGS.objective]
         self.token_indexer = TOKENIZER_MAPPING[FLAGS.model]
 
@@ -90,9 +90,9 @@ class RobertaTokenizerWrapper(TokenIndexer):
         pass
 
 
-from models.dummy_models import RandomMLMModel, ConstantMLMModel
+from my_models.dummy_models import RandomMLMModel, ConstantMLMModel
 
-from models.model import FullModel
+from my_models.model import FullModel
 
 MODEL_MAPPING = OrderedDict(
     [

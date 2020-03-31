@@ -26,6 +26,7 @@ from allennlp.data.token_indexers import (
     TokenCharactersIndexer,
 )
 
+from config import TOKENIZER_MAPPING, FLAGS
 from jiant.huggingface_transformers_interface import (
     input_module_uses_transformers,
     input_module_tokenizer_name,
@@ -671,7 +672,10 @@ def add_transformers_vocab(vocab, tokenizer_name):
     """
     do_lower_case = "uncased" in tokenizer_name
 
-    if tokenizer_name.startswith("bert-"):
+
+    if tokenizer_name.startswith("dirt"):
+        tokenizer = TOKENIZER_MAPPING[FLAGS.model]
+    elif tokenizer_name.startswith("bert-"):
         tokenizer = BertTokenizer.from_pretrained(tokenizer_name, do_lower_case=do_lower_case)
     elif tokenizer_name.startswith("roberta-"):
         tokenizer = RobertaTokenizer.from_pretrained(tokenizer_name)
@@ -738,7 +742,10 @@ class ModelPreprocessingInterface(object):
         boundary_token_fn = None
         lm_boundary_token_fn = None
 
-        if args.input_module.startswith("bert-"):
+        if args.input_module.startswith("dirt"):
+            from jiant.huggingface_transformers_interface.modules import DirtEmbedderModule
+            boundary_token_fn = DirtEmbedderModule.apply_boundary_tokens
+        elif args.input_module.startswith("bert-"):
             from jiant.huggingface_transformers_interface.modules import BertEmbedderModule
 
             boundary_token_fn = BertEmbedderModule.apply_boundary_tokens

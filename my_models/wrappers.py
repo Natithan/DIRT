@@ -92,12 +92,12 @@ class RobertaTokenizerWrapper(TokenIndexer):
 
 from my_models.dummy_models import RandomMLMModel, ConstantMLMModel
 
-from my_models.model import FullModel
+from my_models.model import DIRT
 
 MODEL_MAPPING = OrderedDict(
     [
         ("hf_baseline", RobertaMLMWrapper,),
-        ("my_model", FullModel,),
+        ("my_model", DIRT,),
         ("random", RandomMLMModel,),
         ("constant", ConstantMLMModel,),
     ]

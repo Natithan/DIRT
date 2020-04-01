@@ -14,8 +14,7 @@ from config import FLAGS, TOKENIZER_MAPPING
 from constants import DECODER_START_TOKEN
 from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss
 
-
-class FullModel(Model):
+class DIRT(Model):
     def __init__(self, do_teacher_forcing=True):
         """
         """

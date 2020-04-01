@@ -38,8 +38,7 @@ def contrastive_L2_loss(in_state, predicted_in_state, mask):
 
 
 def process_targets_for_loss(target_tokens):
-    max_target_seq_length = int(FLAGS.max_seq_length * FLAGS.masking_fraction * 2 + 1) if (
-            (target_tokens is None) and FLAGS.use_decoder) else target_tokens.shape[-1]  # Longest length if no adjacent masks
+    max_target_seq_length = target_tokens.shape[-1]  # Longest length if no adjacent masks
     current_target_seq_length = target_tokens.shape[1]
     padding_index = 0
     padder = nn.ConstantPad1d((0, max_target_seq_length - current_target_seq_length), padding_index)

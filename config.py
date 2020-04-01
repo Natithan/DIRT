@@ -25,7 +25,6 @@ MODEL_RELEVANT_FLAGS = ["model",
                         "use_decoder",
                         "nb_encoder_layers",
                         "nb_feedforward_layers",
-                        "nb_decoder_layers",
                         "relative_attention_num_buckets"]
 # TODO maybe make multiple configs? Or maybe keep model hyperparams in some config, and use FLAGS just for folder names etc
 FLAGS = flags.FLAGS
@@ -72,11 +71,9 @@ flags.DEFINE_integer("d_hidden", 768, "Size of token encodings in hidden layers 
 flags.DEFINE_integer("d_ff", 3072, "Number of hidden units in feedforward parts of attention blocks")
 flags.DEFINE_integer("nb_heads", 8, "Number of attention heads")
 flags.DEFINE_integer("max_seq_length", 512, "Maximum number of tokens to consider per batch")
-flags.DEFINE_bool("use_decoder", False, "Whether to use a Transformer decoder on top of the encoder")
 flags.DEFINE_integer("nb_encoder_layers", 12, "Number of layers in the encoder.")
 flags.DEFINE_integer("nb_feedforward_layers", 2,
                      "Number of layers in the feedforward subcomponents of the transformer.")
-flags.DEFINE_integer("nb_decoder_layers", 6, "Number of layers in the decoder.")
 
 
 

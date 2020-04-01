@@ -15,27 +15,17 @@ from constants import DECODER_START_TOKEN
 from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss
 
 class DIRT(Model):
-    def __init__(self, do_teacher_forcing=True):
+    def __init__(self):
         """
         """
         super().__init__(Vocabulary())
         self.embedder = AlbertEmbedder()
         self.encoder = MySequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
-        if FLAGS.use_decoder:
-            self.decoder = MySequential(
-                *[DecoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
         self.lm_head = LMHead()
-        self.teacher_forcing = do_teacher_forcing
         self.metrics_dict = {}
 
     def get_metrics(self, **kwargs):
         return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
-
-    def decode_idxs_to_probabilities(self, decoder_input_token_idxs, encoded, padding_mask):
-        decoder_input_embeddings, _ = self.embedder(decoder_input_token_idxs)
-        decoded, _, _, cum_layer_loss = self.decoder(nn.Dropout()(decoder_input_embeddings), encoded, padding_mask)
-        vocab_scores = self.lm_head(decoded)
-        return vocab_scores, cum_layer_loss
 
     def forward(self, masked_ids, padding_mask, masked_lm_labels=None):
         d_batch = masked_ids.shape[
@@ -46,27 +36,8 @@ class DIRT(Model):
         encoded, _, cum_layer_loss = self.encoder(MyDropout()(embedded_inputs), padding_mask)
         cum_layer_loss = cum_layer_loss / FLAGS.nb_encoder_layers  # Normalize layer loss by number of times it is calculated
         result_dict = {}
-        # DECODING
-        if FLAGS.use_decoder:  # TODO DECODER: maybe add some assert that checks if targets (if any) are in the correct format
-            if self.teacher_forcing:
-                # With teacher forcing, we can parallelize decoding using a causal mask
-                shifted_target_tokens = torch.cat(
-                    (tensor([[self.vocab.get_token_index(DECODER_START_TOKEN)]] * d_batch).cuda(),
-                     # TODO DECODER: change this to not use self.vocab, but directly an id
-                     masked_lm_labels[:, :-1]),
-                    dim=1)  # Teacher forcing: shift to the right by one (add 'start' token in front, and drop last token as not used anyway)
-                vocab_scores, cum_decoder_layer_loss = self.decode_idxs_to_probabilities(shifted_target_tokens, encoded,
-                                                                                         padding_mask)
-                cum_decoder_layer_loss /= 2 * FLAGS.nb_decoder_layers  # Normalize layer loss by number of times it is calculated
-                cum_layer_loss = (cum_layer_loss + cum_decoder_layer_loss) / 2
-                _, output_idxs = torch.max(vocab_scores, dim=-1)
-            else:
-                max_target_seq_length = int(FLAGS.max_seq_length * FLAGS.masking_fraction * 2 + 1) if (
-                        masked_lm_labels is None) else masked_lm_labels.shape[-1]  # Longest length if no adjacent masks
-                vocab_scores, output_idxs = self.beam_decode(d_batch, encoded, max_target_seq_length, padding_mask)
-                result_dict['output_idxs'] = output_idxs
-        else:
-            vocab_scores = self.lm_head(encoded)
+
+        vocab_scores = self.lm_head(encoded)
 
         if masked_lm_labels is not None:
             targets = process_targets_for_loss(masked_lm_labels)
@@ -83,52 +54,6 @@ class DIRT(Model):
         result_dict['vocab_scores'] = vocab_scores
 
         return result_dict  # Dictionary format for AllenNLP trainer loop
-
-    def beam_decode(self, d_batch, encoded, max_target_seq_length,
-                    padding_mask):  # TODO DECODER: make it so that this also outputs vocab probabilities, to allow training without teacher forcing
-        k = FLAGS.beam_width
-        out_seq_length = max_target_seq_length + 1  # To allow start token in the output
-        output_idxs = torch.zeros(d_batch, out_seq_length, k, dtype=torch.long).cuda()
-        output_idxs[:, 0, :] = self.vocab.get_token_index(
-            DECODER_START_TOKEN)  # TODO DECODER: change this to not use self.vocab, but directly an id
-        output_probs = torch.ones(d_batch, k, dtype=torch.long).to(
-            FLAGS.device_idx)  # starting probability for product of probabilities along path
-        for i in range(max_target_seq_length):  # TODO DECODER: this takes pretty long :P find fix?
-
-            # Stack decoder inputs for different candidates in the beam along batch dimension, so they can be
-            # processed in parallel
-            stacked_output_idxs = output_idxs.permute(0, 2, 1).reshape(d_batch * k,
-                                                                       out_seq_length)  # Stacks in batch dim as follows: [b1k1, b1k2, b2k1,b2k2, b3k1, b3k2] if d_batch = 3 and k = 2
-            stacked_encoded, stacked_padding_mask = encoded.repeat(k, 1, 1), padding_mask.repeat(k, 1)
-            stacked_vocab_probs = self.decode_idxs_to_probabilities(stacked_output_idxs, stacked_encoded,
-                                                                    stacked_padding_mask)  # [d_batch*k (stacked as explained above), max_seq_length, vocab_size]
-
-            # Unstack and get result for current sequence element
-            vocab_probs = stacked_vocab_probs.reshape(d_batch, k, out_seq_length, -1).permute(0, 2, 1,
-                                                                                              3)  # [d_batch, out_seq_length, k, vocab_size]
-            current_vocab_probs = vocab_probs[:, i, :, :]  # [d_batch, k, vocab_size]
-
-            # Get the top k probabilities of each word in the vocab for each of the k current top paths in beam search
-            top_kk_probs, top_kk_idxs = torch.topk(current_vocab_probs, k=k,
-                                                   dim=-1)  # [d_batch,k_prev (each previous index), k_now (top k indices for each previous index)]
-
-            top_kk_path_probs = top_kk_probs * output_probs[:, :, None].repeat(1, 1, k)
-
-            # Get the top k next path probabilities, over each previous path
-            top_k_path_probs, top_k_meta_idxs = torch.topk(top_kk_path_probs.reshape(d_batch, k * k), k=k, dim=-1)
-            top_k_path_probs /= top_k_path_probs.max(-1)[0][:, None].repeat(1,
-                                                                            k)  # Scaling path probabilities to avoid underflow. Scaling such that highest probability for each sample is 1
-            top_k_prev_meta_idxs = top_k_meta_idxs // k  # Get the previous paths to keep
-            top_k_now_idxs = torch.gather(top_kk_idxs.reshape(d_batch, k * k), -1, top_k_meta_idxs)
-            output_idxs = torch.gather(output_idxs, -1, top_k_prev_meta_idxs[:, None, :].repeat(1, out_seq_length,
-                                                                                                1))  # replace paths with paths that give the top probs now
-            output_vocab_probs = torch.gather(output_vocab_probs, -1,
-                                              top_k_prev_meta_idxs[:, None, :].repeat(1, out_seq_length,
-                                                                                      1))
-            output_idxs[:, i + 1, :] = top_k_now_idxs
-            output_vocab_probs[:, i + 1, :] = current_vocab_probs
-            output_probs = top_k_path_probs
-        return output_idxs[:, 1:, 0]
 
     def decode(self, output_dict):
         '''
@@ -231,23 +156,6 @@ class MySequential(nn.Sequential):
             else:
                 inputs = module(inputs)
         return inputs
-
-
-class DecoderBlock(nn.Module): #TODO Decoder if put in use: adapt layer loss to be not from mhattention, but directly in forward
-    def __init__(self):
-        super().__init__()
-        self.self_attention = MultiHeadAttention(use_causal_mask=True)
-        self.attention = MultiHeadAttention()
-        # Dropout after every feedforward layer
-        self.feedforward = FeedForwardBlock()
-
-    def forward(self, output, original_encoded_input, padding_mask):
-        self_att_out, layer_loss_1 = itemgetter('activations', 'layer_loss')(self.self_attention(query=output,
-                                                                                                 values=output))  # Include skip-connection and layer normalization
-        att_out, layer_loss_2 = itemgetter('activations', 'layer_loss')(
-            self.attention(query=self_att_out, values=original_encoded_input, padding_mask=padding_mask))
-        ff_out = self.feedforward(att_out)
-        return ff_out, original_encoded_input, padding_mask, layer_loss_1 + layer_loss_2
 
 
 

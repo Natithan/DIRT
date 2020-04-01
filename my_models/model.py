@@ -51,9 +51,6 @@ class FullModel(Model):
     def forward(self, masked_ids, padding_mask, masked_lm_labels=None):
         d_batch = masked_ids.shape[
             0]  # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
-        max_target_seq_length = int(FLAGS.max_seq_length * FLAGS.masking_fraction * 2 + 1) if (
-                masked_lm_labels is None) else masked_lm_labels.shape[-1]  # Longest length if no adjacent masks
-        targets = self.process_targets_for_loss(masked_lm_labels, max_target_seq_length) #TODO adjust model to be able to deal with downstream stage, where no masked_lm_labels
 
         # ENCODING
         embedded_inputs = self.embedder(masked_ids)
@@ -62,6 +59,10 @@ class FullModel(Model):
         result_dict = {}
         # DECODING
         if FLAGS.use_decoder:  # TODO DECODER: maybe add some assert that checks if targets (if any) are in the correct format
+            max_target_seq_length = int(FLAGS.max_seq_length * FLAGS.masking_fraction * 2 + 1) if (
+                    masked_lm_labels is None) else masked_lm_labels.shape[-1]  # Longest length if no adjacent masks
+            if masked_lm_labels is not None:
+                targets = self.process_targets_for_loss(masked_lm_labels, max_target_seq_length)
             if self.teacher_forcing:
                 # With teacher forcing, we can parallelize decoding using a causal mask
                 shifted_target_tokens = torch.cat(
@@ -75,12 +76,14 @@ class FullModel(Model):
                 cum_layer_loss = (cum_layer_loss + cum_decoder_layer_loss) / 2
                 _, output_idxs = torch.max(vocab_scores, dim=-1)
             else:
+                if masked_lm_labels is not None:
+                    targets = masked_lm_labels
                 vocab_scores, output_idxs = self.beam_decode(d_batch, encoded, max_target_seq_length, padding_mask)
                 result_dict['output_idxs'] = output_idxs
         else:
             vocab_scores = self.lm_head(encoded)
 
-        if targets is not None:
+        if masked_lm_labels is not None:
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
             MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
                                              targets)

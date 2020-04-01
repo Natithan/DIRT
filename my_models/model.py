@@ -14,7 +14,8 @@ from config import FLAGS, TOKENIZER_MAPPING
 from constants import DECODER_START_TOKEN
 from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss
 
-class DIRT(Model):
+
+class DIRTLMHead(Model):
     def __init__(self):
         """
         """
@@ -28,14 +29,13 @@ class DIRT(Model):
         return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
 
     def forward(self, masked_ids, padding_mask, masked_lm_labels=None):
-        d_batch = masked_ids.shape[
-            0]  # Actual batch size (might not equal FLAGS.d_batch, eg when not enough samples to fill the last batch
 
         # ENCODING
         embedded_inputs = self.embedder(masked_ids)
         encoded, _, cum_layer_loss = self.encoder(MyDropout()(embedded_inputs), padding_mask)
         cum_layer_loss = cum_layer_loss / FLAGS.nb_encoder_layers  # Normalize layer loss by number of times it is calculated
         result_dict = {}
+        result_dict['encoded_activations'] = encoded
 
         vocab_scores = self.lm_head(encoded)
 

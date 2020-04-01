@@ -13,7 +13,7 @@ from jiant.utils.options import parse_task_list_arg
 from jiant.utils import utils
 from jiant.huggingface_transformers_interface import input_module_tokenizer_name, \
     transformer_input_module_to_tokenizer_name
-from utils.util import load_pretrained_model
+from my_utils.util import load_pretrained_model
 
 
 class DirtEmbedderModule(nn.Module):
@@ -59,7 +59,7 @@ class DirtEmbedderModule(nn.Module):
         return s
 
     def forward(self, sent: Dict[str, torch.LongTensor], task_name: str = "") -> torch.FloatTensor:
-        ids, input_mask = self.correct_sent_indexing(sent)
+        ids, input_mask = self.correct_sent_indexing(sent) #TODO make sure I get some other ids than "unknown unkown unknown ... :P"
         hidden_states, lex_seq = [], None
         if self.output_mode not in ["none", "top"]:
             lex_seq = self.model.embeddings.word_embeddings(ids)

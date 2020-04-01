@@ -22,7 +22,6 @@ MODEL_RELEVANT_FLAGS = ["model",
                         "d_ff",
                         "nb_heads",
                         "max_seq_length",
-                        "use_decoder",
                         "nb_encoder_layers",
                         "nb_feedforward_layers",
                         "relative_attention_num_buckets"]

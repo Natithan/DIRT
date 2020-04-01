@@ -22,7 +22,7 @@ class TestBuildTrainerParams(unittest.TestCase):
         """
         DEFAULTS_PATH = resource_filename(
             "jiant", "config/defaults.conf"
-        )  # To get other required values.
+        )  # To get other required replacers.
         params = params_from_file(DEFAULTS_PATH, HOCON)
         cuda_device = -1
         self.processed_pretrain_params = build_trainer_params(

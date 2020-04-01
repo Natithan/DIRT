@@ -75,7 +75,7 @@ class SentenceEncoder(Model):
                 (if using BiLM or ELMo embeddings). Set False, if want to preserve statefulness.
         Returns:
             - sent_enc (torch.FloatTensor): (b_size, seq_len, d_emb)
-                the padded values in sent_enc are set to 0
+                the padded replacers in sent_enc are set to 0
             - sent_mask (torch.FloatTensor): (b_size, seq_len, d_emb); all 0/1s
         """
         if reset:

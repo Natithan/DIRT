@@ -3,7 +3,6 @@ import os
 from collections import Iterable, OrderedDict, Callable
 
 import numpy as np
-import torch
 
 
 def get_freer_gpu():  # Source: https://discuss.pytorch.org/t/it-there-anyway-to-let-program-select-free-gpu-automatically/17560/6
@@ -65,8 +64,3 @@ class DefaultOrderedDict(OrderedDict):
                                                OrderedDict.__repr__(self))
 
 
-def masked_MSE_loss(target, predicted, mask):
-    '''
-    Returns a mean-square-error loss that only considers sequence elements (along the 2nd dimension) for which the mask is zero
-    '''
-    return torch.mean((((target - predicted) * ~mask[None, :, None]) ** 2))

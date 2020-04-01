@@ -589,7 +589,7 @@ def _write_glue_preds(
         return
 
     def _add_default_column(df, name: str, val):
-        """ Ensure column exists and missing values = val. """
+        """ Ensure column exists and missing replacers = val. """
         if name not in df:
             df[name] = val
         df[name].fillna(value=val, inplace=True)

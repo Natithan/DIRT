@@ -6,7 +6,7 @@ import torch
 from torch import distributed as dist
 
 from config import FLAGS, MODEL_RELEVANT_FLAGS
-from wrappers import MLMModelWrapper, MODEL_MAPPING
+from my_models.wrappers import MLMModelWrapper, MODEL_MAPPING
 
 
 def cleanup():
@@ -48,4 +48,5 @@ def load_pretrained_model():
     wrapped_model.load_state_dict(updated_state_dict)
     unwrapped_model = wrapped_model.model
     return unwrapped_model
+
 

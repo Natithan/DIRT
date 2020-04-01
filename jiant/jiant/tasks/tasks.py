@@ -1574,7 +1574,7 @@ class GLUEDiagnosticTask(PairClassificationTask):
                     mask = batch["%s__%s" % (tag_group, tag)]
                     scorer_str = "scorer__%s__%s" % (tag_group, tag)
 
-                # This will take only values for which the tag is true.
+                # This will take only replacers for which the tag is true.
                 indices_to_pull = torch.nonzero(mask)
                 # No example in the batch is labeled with the tag.
                 if indices_to_pull.size()[0] == 0:

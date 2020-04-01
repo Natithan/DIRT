@@ -361,7 +361,7 @@ def initial_setup(args: config.Params, cl_args: argparse.Namespace) -> (config.P
     args : config.Params
         config map
     cl_args : argparse.Namespace
-        mapping named arguments to parsed values
+        mapping named arguments to parsed replacers
 
     Returns
     -------

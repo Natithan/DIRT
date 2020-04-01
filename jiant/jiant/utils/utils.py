@@ -31,7 +31,7 @@ def get_output_attribute(out, attribute_name, cuda_device, reduction="sum"):
     This function handles processing/reduction of output for both
     DataParallel or non-DataParallel situations.
     For the case of multiple GPUs, This function will
-    sum all values for a certain output attribute in various batches
+    sum all replacers for a certain output attribute in various batches
     together.
 
     Parameters
@@ -382,7 +382,7 @@ def get_elmo_mixing_weights(text_field_embedder, task=None):
         - task (Task): a Task object with a populated `_classifier_name` attribute.
 
     returns:
-        Dict[str, float]: dictionary with the values of each layer weight and of the scaling
+        Dict[str, float]: dictionary with the replacers of each layer weight and of the scaling
                           factor.
     """
     elmo = text_field_embedder.token_embedder_elmo._elmo

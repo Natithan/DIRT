@@ -22,7 +22,7 @@ log.basicConfig(format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", 
 def load_ud_corpus(ud_source_dir: str):
     """
     Extracts the underlying UD corpus data that is stored in conllu format.
-    Returns a dictionary where the keys are the split and the values are dictionaries
+    Returns a dictionary where the keys are the split and the replacers are dictionaries
     where the keys are the sentenceId
     """
     data_path = os.path.join(ud_source_dir, "UD_English-EWT-r1.2")

@@ -40,7 +40,7 @@ class TestProprocess(unittest.TestCase):
         """
         self.DEFAULTS_PATH = resource_filename(
             "jiant", "config/defaults.conf"
-        )  # To get other required values.
+        )  # To get other required replacers.
         self.params1 = params_from_file(self.DEFAULTS_PATH, self.HOCON1)
 
     def test_get_task_without_loading_data(self):

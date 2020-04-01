@@ -1,7 +1,7 @@
 import os
 import random
 
-from models.wrappers import MLMModelWrapper, MODEL_MAPPING
+from my_models.wrappers import MLMModelWrapper, MODEL_MAPPING
 
 import sys
 
@@ -13,12 +13,13 @@ from config import FLAGS
 from pathlib import Path
 
 from text_input_pipeline import GutenbergReader
-from util import get_gpus_with_enough_memory
+from utils.util import get_gpus_with_enough_memory
 
 FIXED_DEVICE_IDXS = None #[0]
 # CHOSEN_RUN_DIR = Path('output','constant','same')
 CHOSEN_RUN_DIR = Path('output','huggingface_baseline_encoder','no_pretrain')
 
+#TODO bring this up-to-date if gonna use
 def main(_):
     FLAGS.device_idxs = get_gpus_with_enough_memory(
         8000) if not FIXED_DEVICE_IDXS else FIXED_DEVICE_IDXS  # Hack to not use flagvalue of og model when pertaining to GPU usage

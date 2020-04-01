@@ -160,8 +160,8 @@ def test_moses_ptb_detokenize():
             "As with many of Rio de Janeiro's cultural monuments, the library was originally off-limits to the general public.",
         ],
         [
-            "The initial condition and the final condition of the system are respectively described by values in a configuration space , for example a position space , or some equivalent space such as a momentum space .",
-            "The initial condition and the final condition of the system are respectively described by values in a configuration space, for example a position space, or some equivalent space such as a momentum space.",
+            "The initial condition and the final condition of the system are respectively described by replacers in a configuration space , for example a position space , or some equivalent space such as a momentum space .",
+            "The initial condition and the final condition of the system are respectively described by replacers in a configuration space, for example a position space, or some equivalent space such as a momentum space.",
         ],
         [
             "Weber began his studies of the subject in The Protestant Ethic and the Spirit of Capitalism , in which he argued that the redefinition of the connection between work and piety in Protestantism and especially in ascetic Protestant denominations , particularly Calvinism , shifted human effort towards rational efforts aimed at achieving economic gain .",

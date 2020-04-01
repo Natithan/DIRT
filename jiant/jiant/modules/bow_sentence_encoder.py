@@ -21,7 +21,7 @@ class BoWSentEncoder(Model):
 
         Returns
             - word_embs (torch.FloatTensor): (b_size, seq_len, d_emb)
-                TODO: check what the padded values in word_embs are (0 or -inf or something else?)
+                TODO: check what the padded replacers in word_embs are (0 or -inf or something else?)
             - word_mask (torch.FloatTensor): (b_size, seq_len, d_emb); all 0/1s
         """
         word_embs = self._text_field_embedder(sent)

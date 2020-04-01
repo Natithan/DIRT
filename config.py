@@ -9,13 +9,13 @@ from pathlib2 import Path
 from transformers import RobertaTokenizer
 
 from constants import READ_ONLY_ROOT, WRITE_ROOT
-from flag_util import get_freer_gpu, DefaultOrderedDict, get_gpus_with_enough_memory
+from my_utils.flag_util import DefaultOrderedDict, get_gpus_with_enough_memory
 
 logger = logging.getLogger(__name__)
 
 #Flags that should be taken from a loaded model's original flags
 MODEL_RELEVANT_FLAGS = ["model",
-                        "use_DIR",
+                        "DIR",
                         "tokenizer",
                         "d_emb",
                         "d_hidden",
@@ -29,7 +29,7 @@ MODEL_RELEVANT_FLAGS = ["model",
                         "relative_attention_num_buckets"]
 # TODO maybe make multiple configs? Or maybe keep model hyperparams in some config, and use FLAGS just for folder names etc
 FLAGS = flags.FLAGS
-flags.DEFINE_integer("d_batch", 8, "Batch size. If use_DIR, this is also the number of negative samples + 1")
+flags.DEFINE_integer("d_batch", 8, "Batch size. If DIR is not none, this is also the number of negative samples + 1")
 flags.DEFINE_float("DIR_loss_fraction",0.95,"Fraction of the total loss that the distributed regression loss accounts for")
 flags.DEFINE_integer("model_save_interval", 300, "Number of seconds after which a model will be checkpointed, even within an epoch")
 flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
@@ -50,6 +50,7 @@ flags.DEFINE_string("saved_pretrained_model_path","",
                     "Path to a checkpoint of a pretrained model. "
                     "If \"pretrained_model\" flag is provided, equals WRITE_ROOT/output/my_model/<pretrained_model>/best.th")
 flags.DEFINE_string("cache_dir",Path(READ_ONLY_ROOT,"cache").as_posix(),"Directory to store a cache of 🤗 transformers tokenizer ")
+flags.DEFINE_string("description","","Informal description of a run, will be stored in description.txt in the run_name folder")
 
 # Trainer flags
 flags.DEFINE_integer("patience", 500, "Number of epochs the validation metric can worsen before stopping training.")
@@ -64,7 +65,7 @@ flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked dur
 
 # Flags that determine what the model looks like
 flags.DEFINE_string("model", "my_model", "Name of the model to use (see MODEL_MAPPING)")
-flags.DEFINE_bool("use_DIR",False,"Whether to use distributed internal regression to create additional losses")
+flags.DEFINE_string("DIR",'',"Which variant of distributed internal regression to employ. Options are: top_down, from_projection, or empty if not using DIR (default)")
 flags.DEFINE_string("tokenizer", "", "Which tokenizer to use. Currently everything defaults to RobertaTokenizer :P")
 flags.DEFINE_integer("d_emb", 72, "Size of token encodings before contextualization")
 flags.DEFINE_integer("d_hidden", 768, "Size of token encodings in hidden layers (contextualized)")
@@ -82,7 +83,7 @@ flags.DEFINE_integer("nb_decoder_layers", 6, "Number of layers in the decoder.")
 
 
 # Distributed training stuff
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(3000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(11000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")

@@ -303,7 +303,7 @@ class SamplingMultiTaskTrainer:
             - metric_infos (Dict[str:Dict[str:???]]): dictionary containing metric information.
                 Each metric should be the validation metric of a task, except {micro/macro}_avg,
                 which are privileged to get an aggregate multi-task score. Each dict contains:
-                - hist (List[float]): previous values of the metric
+                - hist (List[float]): previous replacers of the metric
                 - stopped (Bool): whether or not that metric is stopped or not
                 - best (Tuple(Int, Dict)): information on the best value of that metric and when
                     it happened

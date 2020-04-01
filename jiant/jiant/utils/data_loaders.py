@@ -102,7 +102,7 @@ def load_tsv(
     value 'fiction').
 
     Args:
-        tokenizer_name (str): The name of the tokenizer to use (see defaluts.conf for values).
+        tokenizer_name (str): The name of the tokenizer to use (see defaluts.conf for replacers).
         data_file (str): The path to the file to read.
         max_seq_len (int): The maximum number of tokens to keep after tokenization, per text field.
             Start and end symbols are introduced before tokenization, and are counted, so we will

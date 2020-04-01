@@ -492,7 +492,7 @@ class Predictions(object):
             if field not in long_df.columns:
                 continue
             log.info(
-                "Found special field '%s' with %d unique values.",
+                "Found special field '%s' with %d unique replacers.",
                 field,
                 len(long_df[field].unique()),
             )

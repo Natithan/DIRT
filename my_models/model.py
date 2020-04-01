@@ -9,11 +9,10 @@ from allennlp.data import Vocabulary
 from allennlp.models import Model
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 from torch import tensor
 from config import FLAGS, TOKENIZER_MAPPING
 from constants import DECODER_START_TOKEN
-from flag_util import masked_MSE_loss
+from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss
 
 
 class FullModel(Model):
@@ -33,15 +32,6 @@ class FullModel(Model):
     def get_metrics(self, **kwargs):
         return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
 
-    def process_targets_for_loss(self, target_tokens,
-                                 max_target_seq_length):
-        padding_index = 0
-        current_target_seq_length = target_tokens.shape[1]
-        padder = nn.ConstantPad1d((0, max_target_seq_length - current_target_seq_length), padding_index)
-        target_tokens_contiguous = padder(target_tokens).contiguous().view(-1)
-
-        return target_tokens_contiguous
-
     def decode_idxs_to_probabilities(self, decoder_input_token_idxs, encoded, padding_mask):
         decoder_input_embeddings, _ = self.embedder(decoder_input_token_idxs)
         decoded, _, _, cum_layer_loss = self.decoder(nn.Dropout()(decoder_input_embeddings), encoded, padding_mask)
@@ -59,10 +49,6 @@ class FullModel(Model):
         result_dict = {}
         # DECODING
         if FLAGS.use_decoder:  # TODO DECODER: maybe add some assert that checks if targets (if any) are in the correct format
-            max_target_seq_length = int(FLAGS.max_seq_length * FLAGS.masking_fraction * 2 + 1) if (
-                    masked_lm_labels is None) else masked_lm_labels.shape[-1]  # Longest length if no adjacent masks
-            if masked_lm_labels is not None:
-                targets = self.process_targets_for_loss(masked_lm_labels, max_target_seq_length)
             if self.teacher_forcing:
                 # With teacher forcing, we can parallelize decoding using a causal mask
                 shifted_target_tokens = torch.cat(
@@ -76,19 +62,20 @@ class FullModel(Model):
                 cum_layer_loss = (cum_layer_loss + cum_decoder_layer_loss) / 2
                 _, output_idxs = torch.max(vocab_scores, dim=-1)
             else:
-                if masked_lm_labels is not None:
-                    targets = masked_lm_labels
+                max_target_seq_length = int(FLAGS.max_seq_length * FLAGS.masking_fraction * 2 + 1) if (
+                        masked_lm_labels is None) else masked_lm_labels.shape[-1]  # Longest length if no adjacent masks
                 vocab_scores, output_idxs = self.beam_decode(d_batch, encoded, max_target_seq_length, padding_mask)
                 result_dict['output_idxs'] = output_idxs
         else:
             vocab_scores = self.lm_head(encoded)
 
         if masked_lm_labels is not None:
+            targets = process_targets_for_loss(masked_lm_labels)
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
             MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
                                              targets)
             result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
-                    1 - FLAGS.DIR_loss_fraction) * MLM_loss if FLAGS.use_DIR else MLM_loss
+                    1 - FLAGS.DIR_loss_fraction) * MLM_loss if FLAGS.DIR else MLM_loss
 
             self.metrics_dict['crossentropy_loss'] = MLM_loss.item()
             self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
@@ -207,7 +194,7 @@ class EncoderBlock(nn.Module):
         # Dropout after every feedforward layer
         self.feedforward = FeedForwardBlock()
 
-        if FLAGS.use_DIR:
+        if FLAGS.DIR == 'top_down':
             self.top_down_regressor = nn.Sequential(
                 nn.Linear(FLAGS.d_hidden,FLAGS.d_ff),
                 nn.Linear(FLAGS.d_ff,FLAGS.d_hidden),
@@ -215,37 +202,22 @@ class EncoderBlock(nn.Module):
 
     def forward(self, in_state, padding_mask,
                 cum_layer_loss=0):
-        att_out = itemgetter('activations')(
-            self.multihead_attention(in_state, in_state, padding_mask))
+        attention_output_dict = self.multihead_attention(in_state, in_state, padding_mask)
+        att_out = attention_output_dict['activations']
         out_state = self.feedforward(att_out)
 
         # Top-down regression
-        if FLAGS.use_DIR:
-            mask = (torch.rand(in_state.shape[1]) > FLAGS.masking_fraction).cuda(
-                in_state.device)  # Same mask for items in batch
-            broadcast_ready_mask = mask[None, :, None]
-            masked_in_state = in_state * broadcast_ready_mask
-            masked_att_out = itemgetter('activations')(
-                self.multihead_attention(masked_in_state, in_state, padding_mask))
+        if FLAGS.DIR == 'top_down':
+            masked_in_state, mask = apply_sequence_mask(in_state)
+            masked_att_out = self.multihead_attention(masked_in_state, in_state, padding_mask)['activations']
             masked_out_state = self.feedforward(masked_att_out) #TODO should add activation? And should add sometimes-not-masking?
             predicted_in_state = self.top_down_regressor(masked_out_state)
-            layer_loss = self.contrastive_L2_loss(in_state, predicted_in_state, mask)
+            layer_loss = contrastive_L2_loss(in_state, predicted_in_state, mask)
+        elif FLAGS.DIR == 'from_projection':
+            layer_loss = attention_output_dict['layer_loss']
         else:
             layer_loss = 0
         return out_state, padding_mask, layer_loss + cum_layer_loss
-
-    def contrastive_L2_loss(self, in_state, predicted_in_state, mask):
-        if FLAGS.d_batch <= 1:
-            raise ValueError('Using DIR requires batch size bigger than 1 to contrast with')
-        d_batch = in_state.shape[0]
-        negative_loss = sum([masked_MSE_loss(in_state.roll(shifts=i, dims=0), predicted_in_state, mask) for i in
-                             range(
-                                 d_batch)]) / d_batch if d_batch > 1 else torch.tensor(
-            1.)
-        # Positive loss: distance to corresponding batch element
-        positive_loss = masked_MSE_loss(in_state, predicted_in_state, mask)
-        layer_loss = positive_loss / negative_loss
-        return layer_loss
 
 
 class MySequential(nn.Sequential):
@@ -279,6 +251,32 @@ class DecoderBlock(nn.Module): #TODO Decoder if put in use: adapt layer loss to 
         return ff_out, original_encoded_input, padding_mask, layer_loss_1 + layer_loss_2
 
 
+
+class Anticipation(nn.Module):
+    def __init__(self):
+        super().__init__()
+        d_head = int(FLAGS.d_hidden / FLAGS.nb_heads)
+        self.projector = nn.Linear(3 * d_head,
+                                   d_head)
+
+    def forward(self, q, k, v, position_embeddings, original_state):
+        d_batch, d_seq, d_hidden = q.shape[0], q.shape[1], q.shape[2]
+        nb_heads = FLAGS.nb_heads
+        d_head = int(d_hidden / nb_heads)
+
+        stacked_q, stacked_k, stacked_v = [t.transpose(1, 2).reshape(d_batch * nb_heads, d_head, d_seq) for t in
+                                           [q, k, v]]  # [d_batch x nb_heads, d_head, d_seq]
+        anticipation_input = torch.cat((stacked_q, stacked_k, stacked_v),
+                                       dim=1)  # [d_batch x nb_heads, 3 x d_head, d_seq]
+        # Transpose: make sure d_head-dimension is at the last place for nn.Linear
+        projected_input = self.projector(anticipation_input.transpose(1, 2)).transpose(1,2)  # [d_batch x nb_heads, d_head, d_seq]
+
+        masked_pos_embeddings, mask = apply_sequence_mask(position_embeddings)
+        predicted_state_stacked = projected_input.bmm(masked_pos_embeddings)  # [d_batch x nb_heads, d_head, d_seq]
+        predicted_state = predicted_state_stacked.reshape(d_batch, d_hidden, d_seq).transpose(1, 2)
+
+        return contrastive_L2_loss(original_state, predicted_state, mask)
+
 class MultiHeadAttention(nn.Module):
 
     def __init__(self, use_causal_mask=False):
@@ -296,10 +294,12 @@ class MultiHeadAttention(nn.Module):
         self.relative_attention_bias = nn.Embedding(FLAGS.relative_attention_num_buckets, FLAGS.nb_heads)
         self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_hidden)
 
+        if FLAGS.DIR == 'from_projection':
+            self.anticipation = Anticipation()
 
     def get_attention_mask(self, padding_mask, d_batch, query_length, value_length):
         """
-        Produces a mask that indicates which values not to pay attention to.
+        Produces a mask that indicates which replacers not to pay attention to.
         Combines a causal mask (if any) and a padding mask (if any)
         """
 
@@ -317,17 +317,22 @@ class MultiHeadAttention(nn.Module):
         attention_mask = reshaped_padding_mask + causal_mask if self.use_causal_mask else reshaped_padding_mask
         return attention_mask  # [d_batch*FLAGS.num_heads, query_length, value_length]
 
-    def forward(self, query, values,
+    def forward(self, replacees, replacers,
                 padding_mask=None):  # Padding mask to make sure we don't attend to padded positions
+        '''
+        Performs multi-headed attention: replacing each of the replacees by a weighted combination of all of the (learned value projections of) replacers.
+        The weights are determined by a combination of 1) relative distance between replacer and replacee
+        and 2) similarity of the (learned query projection of) the replacee to the (learned key projection of) the replacer g_mask:
+        '''
         result_dict = {}
-        d_batch = query.shape[0]
-        q = self.project_q(query)
-        k = self.project_k(values)
-        v = self.project_v(values)
+        d_batch = replacees.shape[0]
+        q = self.project_q(replacees)
+        k = self.project_k(replacers)
+        v = self.project_v(replacers)
         assert FLAGS.d_hidden % FLAGS.nb_heads == 0
         d_head_hidden = FLAGS.d_hidden // FLAGS.nb_heads
-        query_length = query.shape[1]
-        value_length = values.shape[1]
+        query_length = replacees.shape[1]
+        value_length = replacers.shape[1]
 
         # This reshaping slices the last dimension and stacks those slices along the first dimension
         # In the resulting first dimension, first come all slices from the first batch, then from the second, and so on
@@ -354,7 +359,11 @@ class MultiHeadAttention(nn.Module):
                                            v_multi_parts)  # [d_batch*num_heads,query_length, d_head_hidden] from [d_batch*num_heads, query_length, value_length] x [d_batch*num_heads,value_length, d_head_hidden]
         att_output = att_output_multi_parts.contiguous().view(d_batch, query_length, FLAGS.d_hidden)
         att_output = self.project_o(att_output)
-        result_dict['activations'] = self.LayerNorm(att_output + MyDropout()(query))  # Include skip-connection
+        result_dict['activations'] = self.LayerNorm(att_output + MyDropout()(replacees))  # Include skip-connection
+
+        if FLAGS.DIR == 'from_projection':
+            assert torch.equal(replacees, replacers), 'from_projection DIR only works with self-attention.'  # TODO if I go on with this type of regressor, maybe fix to work for encoder-decoder form too
+            result_dict['layer_loss'] = self.anticipation(q, k, v, batch_pos_embeddings, replacees)
 
         return result_dict
 
@@ -390,7 +399,7 @@ class MultiHeadAttention(nn.Module):
             max_distance: an integer
         Returns:
             a Tensor with the same shape as relative_position, containing int32
-            values in the range [0, num_buckets)
+            replacers in the range [0, num_buckets)
         """
         bucket_indices = 0
         n = -relative_position
@@ -412,7 +421,7 @@ class MultiHeadAttention(nn.Module):
         val_if_large = max_exact + (
                 torch.log(n.float() / max_exact) / math.log(max_distance / max_exact) * (num_buckets - max_exact)
         ).to(torch.long)
-        # This puts all values larger than max_distance in the bucket for biggest numbers
+        # This puts all replacers larger than max_distance in the bucket for biggest numbers
         val_if_large = torch.min(val_if_large, torch.full_like(val_if_large, num_buckets - 1))
 
         bucket_indices += torch.where(is_small, n, val_if_large)

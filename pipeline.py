@@ -5,7 +5,7 @@ import torch.multiprocessing as mp
 
 from torch.utils.data import DataLoader, DistributedSampler
 
-from models.wrappers import MLMModelWrapper, MODEL_MAPPING
+from my_models.wrappers import MLMModelWrapper, MODEL_MAPPING
 
 from pathlib import Path
 import torch.optim as optim
@@ -14,10 +14,10 @@ from absl import app
 from config import FLAGS
 
 from text_input_pipeline import get_data_dict
-from allennlp.training import GradientDescentTrainer, Checkpointer
+from allennlp.training import Checkpointer
 
 from trainer import MyTrainer
-from util import cleanup, setup
+from my_utils.util import cleanup, setup
 
 
 def get_loader(dataset, distributed):
@@ -36,6 +36,10 @@ def main(_):
     run_dir = Path(FLAGS.model_folder, FLAGS.model, FLAGS.run_name)
     if not os.path.exists(run_dir):
         os.makedirs(run_dir)
+    #Store the run description, if any
+    if FLAGS.description:
+        with open(Path(run_dir,'description.txt'),'w') as f:
+            f.write(FLAGS.description)
     # Store configuration in same folder as logs and model
     flagfile = Path(run_dir, 'flagfile.txt')
     if os.path.exists(flagfile):
@@ -45,7 +49,7 @@ def main(_):
 
     data_dict = get_data_dict()
     train_dataset, test_dataset, val_dataset = (data_dict[key] for key in
-                                                       ('train', 'test', 'val', 'vocab'))
+                                                       ('train', 'test', 'val'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model])
 
     distributed_wrapper(train,model, run_dir, train_dataset, val_dataset)

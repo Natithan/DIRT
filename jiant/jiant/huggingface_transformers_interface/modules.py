@@ -13,7 +13,7 @@ from jiant.utils.options import parse_task_list_arg
 from jiant.utils import utils
 from jiant.huggingface_transformers_interface import input_module_tokenizer_name, \
     transformer_input_module_to_tokenizer_name
-from util import load_pretrained_model
+from utils.util import load_pretrained_model
 
 
 class DirtEmbedderModule(nn.Module):

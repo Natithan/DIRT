@@ -40,9 +40,7 @@ flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
                     "Folder with trained models and tensorboard logs")
 flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings.")
 flags.DEFINE_integer("num_serialized_models_to_keep", 1, "Number of serialized trained models to store.")
-flags.DEFINE_bool("use_pretrained_weights", False, "Whether to initialize weights with pretrained weights. "
-                                                  "If so, the CONFIG_MAPPING is used to determine weights. "
-                                                  "Only works for hf_baseline so far ;)") #TODO maybe expand this to own model
+flags.DEFINE_string("pretrained_weights_handle", '', "Which weights to initialize the model with. Random if empty string is given ")
 flags.DEFINE_bool("fresh_data",False,"If True, don't use a pickled version of the data input if that existed")
 flags.DEFINE_string("saved_pretrained_model_path","",
                     "Path to a checkpoint of a pretrained model. "
@@ -88,6 +86,10 @@ flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned b
 flags.DEFINE_string("config_file","", "Location of the file that contains the flow-control-config")
 flags.DEFINE_string("pretrained_model","","Name of the run whose best checkpoint will be used as pretrained model."
                                        " Ignored if saved_pretrained_model_path is provided.")
+flags.DEFINE_bool("reload_indexing",False,"If True, redo the indexing that happens in jiant")
+flags.DEFINE_string("overrides","", "String that indicates which parameters from the config_file to override with what")
+
+
 
 
 

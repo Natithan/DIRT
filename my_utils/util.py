@@ -24,7 +24,7 @@ def setup(rank,world_size):
     # start from same random weights and biases.
     torch.manual_seed(42)
 
-def load_pretrained_model():
+def load_pretrained_model_for_SG():
     model_path = FLAGS.saved_pretrained_model_path
     flagfile_path = model_path.replace('best.th', 'flagfile.txt')
     model_FLAGS = deepcopy(FLAGS)
@@ -38,7 +38,7 @@ def load_pretrained_model():
             updated_flags.append(f)
         if updated_flags:
             print(f"Changed the following flags to that of the pretrained model: {updated_flags}")
-    wrapped_model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model])
+    wrapped_model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],finetune_stage=True)
 
     # A hack because I renamed one of the models modules :P
     old_state_dict = torch.load(model_path, map_location=torch.device(FLAGS.device_idxs[0]))
@@ -50,3 +50,5 @@ def load_pretrained_model():
     return unwrapped_model
 
 
+def load_pretrained_weights_for_LM(model, pretrained_weights_handle):
+    pass

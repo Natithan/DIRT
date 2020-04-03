@@ -12,19 +12,23 @@ The pipeline is three steps
 """
 import _pickle as pkl  # :(
 import io
+import itertools
 import logging as log
 import os
 from collections import defaultdict
 from typing import List, Dict, Union, Any
 
 import numpy as np
+from overrides import overrides
 import torch
-from allennlp.data import Vocabulary
+from allennlp.common.util import pad_sequence_to_length
+from allennlp.data.vocabulary import Vocabulary
 from allennlp.data.token_indexers import (
     ELMoTokenCharactersIndexer,
     SingleIdTokenIndexer,
     TokenCharactersIndexer,
 )
+from allennlp.data.tokenizers.token import Token
 
 from config import TOKENIZER_MAPPING, FLAGS
 from jiant.huggingface_transformers_interface import (
@@ -51,8 +55,11 @@ from jiant.tasks.seq2seq import Seq2SeqTask
 from jiant.tasks.tasks import SequenceGenerationTask, Task
 from jiant.utils import config, serialize, utils
 from jiant.utils.options import parse_task_list_arg
+from allennlp.data.token_indexers.token_indexer import TokenIndexer
 
 # NOTE: these are not that same as AllenNLP SOS, EOS tokens
+from utils.tokenizers import get_tokenizer
+
 SOS_TOK, EOS_TOK = "<SOS>", "<EOS>"
 # NOTE: pad and unk tokens are created by AllenNLP vocabs by default
 SPECIALS = [SOS_TOK, EOS_TOK]
@@ -268,6 +275,40 @@ def _build_vocab(args: config.Params, tasks: List[Task], vocab_path: str):
     #  del word2freq, char2freq, target2freq
 
 
+class DIRTIndexerWrapper:
+    def __init__(self, tokenizer_name):
+        self.tokenizer_name = tokenizer_name
+
+    def count_vocab_items(self, token: Token, counter: Dict[str, Dict[str, int]]):
+        # If `text_id` is set on the token (e.g., if we're using some kind of hash-based word
+        # encoding), we will not be using the vocab for this token.
+        pass
+
+    def tokens_to_indices(self,
+                          tokens: List[Token],
+                          vocabulary: Vocabulary,
+                          index_name: str) -> Dict[str, List[int]]:
+        text_tokens = [t.text for t in tokens]
+        indices = get_tokenizer(self.tokenizer_name).convert_tokens_to_ids(text_tokens)
+        return {index_name: indices}
+
+    def get_token_min_padding_length(self): # To deal with what seems like a mistake in the jiant-version of allennlp: is demanded, but is actually _token_min_padding_length
+        return 0
+
+    def get_padding_token(self) -> int:
+        return get_tokenizer(self.tokenizer_name).pad_token_id
+
+    def get_padding_lengths(self, token: int) -> Dict[str, int]:  # pylint: disable=unused-argument
+        return {}
+
+    def pad_token_sequence(self,
+                           tokens: Dict[str, List[int]],
+                           desired_num_tokens: Dict[str, int],
+                           padding_lengths: Dict[str, int]) -> Dict[str, List[int]]:  # pylint: disable=unused-argument
+        return {key: pad_sequence_to_length(val, desired_num_tokens[key])
+                for key, val in tokens.items()}
+
+
 def build_indexers(args):
     indexers = {}
     if args.input_module in ["scratch", "glove", "fastText"]:
@@ -283,8 +324,11 @@ def build_indexers(args):
             f"CoVe model expects Moses tokenization (MosesTokenizer);"
             " you are using args.tokenizer = {args.tokenizer}"
         )
-
-    if input_module_uses_transformers(args.input_module):
+    if args.input_module == 'dirt':
+        tokenizer_name = input_module_tokenizer_name(args.input_module)
+        indexers[tokenizer_name] = DIRTIndexerWrapper(tokenizer_name)
+        # indexers[tokenizer_name] = SingleIdTokenIndexer(tokenizer_name)
+    elif input_module_uses_transformers(args.input_module):
         assert (
             not indexers
         ), "transformers modules like BERT/XLNet are not supported alongside other "
@@ -295,6 +339,7 @@ def build_indexers(args):
         )
         tokenizer_name = input_module_tokenizer_name(args.input_module)
         indexers[tokenizer_name] = SingleIdTokenIndexer(tokenizer_name)
+
     return indexers
 
 

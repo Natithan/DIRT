@@ -11,9 +11,9 @@ from transformers import RobertaForMaskedLM, RobertaTokenizer
 
 
 class MLMModelWrapper(Model):
-    def __init__(self, model):
+    def __init__(self, model,finetune_stage=False):
         super().__init__(Vocabulary())
-        self.model = model()
+        self.model = model(finetune_stage)
         self.objective = OBJECTIVE_MAPPING[FLAGS.objective]
         self.token_indexer = TOKENIZER_MAPPING[FLAGS.model]
 
@@ -37,12 +37,12 @@ class RobertaMLMWrapper(Model):
     Wrapper class for huggingface's RobertaForMaskedLM to allow passing it to the AllenNLP trainer
     '''
 
-    def __init__(self, dummy_vocab):
+    def __init__(self, dummy_vocab,finetune_stage=False): #TODO if ever reuse this: adapt to finetune stage
         super().__init__(dummy_vocab)
         self.metrics_dict = {}
         config_name = CONFIG_MAPPING[FLAGS.model]
         model_class = RobertaForMaskedLM
-        if FLAGS.use_pretrained_weights:
+        if FLAGS.pretrained_weights_handle:
             self.model = model_class.from_pretrained(config_name)
         else:
             config = model_class.config_class.from_pretrained(
@@ -54,7 +54,7 @@ class RobertaMLMWrapper(Model):
         result_dict = {}
         if masked_lm_labels is not None:
             result_dict['loss'] = tuple_result[0]  # Add more parts of output when needed :P
-            self.metrics_dict['crossentropy_loss'] = result_dict['loss'] #TODO figure out why crossentropy loss much more jittery than normal loss
+            self.metrics_dict['crossentropy_loss'] = result_dict['loss']
             result_dict['vocab_scores'] = tuple_result[1]
         else:
             result_dict['vocab_scores'] = tuple_result[0]

@@ -13,7 +13,7 @@ from jiant.utils.options import parse_task_list_arg
 from jiant.utils import utils
 from jiant.huggingface_transformers_interface import input_module_tokenizer_name, \
     transformer_input_module_to_tokenizer_name
-from my_utils.util import load_pretrained_model
+from my_utils.util import load_pretrained_model_for_SG
 
 
 class DirtEmbedderModule(nn.Module):
@@ -32,7 +32,7 @@ class DirtEmbedderModule(nn.Module):
         # self.model = transformers.RobertaModel.from_pretrained(
         #     args.input_module, cache_dir=self.cache_dir, output_hidden_states=True
         # )
-        self.model = load_pretrained_model()
+        self.model = load_pretrained_model_for_SG()
         self.max_pos = None
 
         self.tokenizer = transformers.RobertaTokenizer.from_pretrained(
@@ -65,7 +65,8 @@ class DirtEmbedderModule(nn.Module):
             lex_seq = self.model.embeddings.word_embeddings(ids)
             lex_seq = self.model.embeddings.LayerNorm(lex_seq)
         if self.output_mode != "only":
-            _, output_pooled_vec, hidden_states = self.model(ids,padding_mask=input_mask)
+            output_dict = self.model(ids,padding_mask=input_mask)
+            hidden_states = [output_dict['encoded_activations']] #only for the last layer atm
         return self.prepare_output(lex_seq, hidden_states, input_mask)
 
     def get_pretrained_lm_head(self):
@@ -73,7 +74,7 @@ class DirtEmbedderModule(nn.Module):
         #     self.input_module, cache_dir=self.cache_dir
         # )
         lm_head = self.model.lm_head
-        lm_head.predictions.decoder.weight = self.model.embeddings.word_embeddings.weight #TODO huh, then why load the roberta head in the first place?
+        lm_head.predictions.decoder.weight = self.model.embeddings.word_embeddings.weight #Only replace the topmost layer of the LM head
         return nn.Sequential(lm_head, nn.LogSoftmax(dim=-1))
 
     def parameter_setup(self, args):

@@ -17,7 +17,7 @@ from text_input_pipeline import get_data_dict
 from allennlp.training import Checkpointer
 
 from trainer import MyTrainer
-from my_utils.util import cleanup, setup
+from my_utils.util import cleanup, setup, load_pretrained_weights_for_LM
 
 
 def get_loader(dataset, distributed):
@@ -30,6 +30,7 @@ def get_loader(dataset, distributed):
         return DataLoader(dataset,
                             batch_size=FLAGS.d_batch,
                             shuffle=True)
+
 
 def main(_):
     # Create folders and files to store results and configs
@@ -51,7 +52,8 @@ def main(_):
     train_dataset, test_dataset, val_dataset = (data_dict[key] for key in
                                                        ('train', 'test', 'val'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model])
-
+    if FLAGS.pretrained_weights_handle:
+        load_pretrained_weights_for_LM(model, FLAGS.pretrained_weights_handle)
     distributed_wrapper(train,model, run_dir, train_dataset, val_dataset)
 
     model(test_dataset)

@@ -16,14 +16,16 @@ from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, proce
 
 
 class DIRTLMHead(Model):
-    def __init__(self):
+    def __init__(self, finetune_stage=False):
         """
+        finetune_stage: if True, don't do masking of words and internal activation
         """
         super().__init__(Vocabulary())
         self.embedder = AlbertEmbedder()
-        self.encoder = MySequential(*[EncoderBlock() for _ in range(FLAGS.nb_encoder_layers)])
+        self.encoder = MySequential(*[EncoderBlock(finetune_stage) for _ in range(FLAGS.nb_encoder_layers)])
         self.lm_head = LMHead()
         self.metrics_dict = {}
+        self.finetune_stage = finetune_stage
 
     def get_metrics(self, **kwargs):
         return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
@@ -39,7 +41,7 @@ class DIRTLMHead(Model):
 
         vocab_scores = self.lm_head(encoded)
 
-        if masked_lm_labels is not None:
+        if (masked_lm_labels is not None) and (not self.finetune_stage):
             targets = process_targets_for_loss(masked_lm_labels)
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
             MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
@@ -112,13 +114,13 @@ class FeedForwardBlock(nn.Module):
 
 
 class EncoderBlock(nn.Module):
-    def __init__(self):
+    def __init__(self,finetune_stage=False):
         super().__init__()
-        self.multihead_attention = MultiHeadAttention()
+        self.multihead_attention = MultiHeadAttention(finetune_stage)
         # Dropout after every feedforward layer
         self.feedforward = FeedForwardBlock()
-
-        if FLAGS.DIR == 'top_down':
+        self.finetune_stage = finetune_stage
+        if FLAGS.DIR == 'top_down' and (not self.finetune_stage):
             self.top_down_regressor = nn.Sequential(
                 nn.Linear(FLAGS.d_hidden,FLAGS.d_ff),
                 nn.Linear(FLAGS.d_ff,FLAGS.d_hidden),
@@ -131,14 +133,15 @@ class EncoderBlock(nn.Module):
         out_state = self.feedforward(att_out)
 
         # Top-down regression
-        if FLAGS.DIR == 'top_down':
-            masked_in_state, mask = apply_sequence_mask(in_state)
-            masked_att_out = self.multihead_attention(masked_in_state, in_state, padding_mask)['activations']
-            masked_out_state = self.feedforward(masked_att_out) #TODO should add activation? And should add sometimes-not-masking?
-            predicted_in_state = self.top_down_regressor(masked_out_state)
-            layer_loss = contrastive_L2_loss(in_state, predicted_in_state, mask)
-        elif FLAGS.DIR == 'from_projection':
-            layer_loss = attention_output_dict['layer_loss']
+        if not self.finetune_stage:
+            if FLAGS.DIR == 'top_down': #TODO make sure to only do (internal) denoising task when pretraining
+                masked_in_state, mask = apply_sequence_mask(in_state)
+                masked_att_out = self.multihead_attention(masked_in_state, in_state, padding_mask)['activations']
+                masked_out_state = self.feedforward(masked_att_out) #TODO should add activation? And should add sometimes-not-masking?
+                predicted_in_state = self.top_down_regressor(masked_out_state)
+                layer_loss = contrastive_L2_loss(in_state, predicted_in_state, mask)
+            elif FLAGS.DIR == 'from_projection':
+                layer_loss = attention_output_dict['layer_loss']
         else:
             layer_loss = 0
         return out_state, padding_mask, layer_loss + cum_layer_loss
@@ -186,7 +189,7 @@ class Anticipation(nn.Module):
 
 class MultiHeadAttention(nn.Module):
 
-    def __init__(self, use_causal_mask=False):
+    def __init__(self, use_causal_mask=False,finetune_stage=False):
         super().__init__()
         # Only one big projection matrix is used, instead of a small projection matrix per head.
         # This is possible because in this implementation, the number of heads always needs to be a divisor of d_hidden
@@ -200,8 +203,9 @@ class MultiHeadAttention(nn.Module):
         self.use_causal_mask = use_causal_mask
         self.relative_attention_bias = nn.Embedding(FLAGS.relative_attention_num_buckets, FLAGS.nb_heads)
         self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_hidden)
+        self.finetune_stage = finetune_stage
 
-        if FLAGS.DIR == 'from_projection':
+        if FLAGS.DIR == 'from_projection' and (not self.finetune_stage):
             self.anticipation = Anticipation()
 
     def get_attention_mask(self, padding_mask, d_batch, query_length, value_length):
@@ -268,7 +272,7 @@ class MultiHeadAttention(nn.Module):
         att_output = self.project_o(att_output)
         result_dict['activations'] = self.LayerNorm(att_output + MyDropout()(replacees))  # Include skip-connection
 
-        if FLAGS.DIR == 'from_projection':
+        if FLAGS.DIR == 'from_projection' and (not self.finetune_stage):
             assert torch.equal(replacees, replacers), 'from_projection DIR only works with self-attention.'  # TODO if I go on with this type of regressor, maybe fix to work for encoder-decoder form too
             result_dict['layer_loss'] = self.anticipation(q, k, v, batch_pos_embeddings, replacees)
 

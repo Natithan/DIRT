@@ -9,10 +9,12 @@ import random
 import re
 import time
 
+import allennlp
 import numpy as np
 import torch
 from allennlp.common import Params  # pylint: disable=import-error
 from allennlp.common.checks import ConfigurationError  # pylint: disable=import-error
+from allennlp.data import Instance
 from allennlp.data.iterators import BasicIterator, BucketIterator  # pylint: disable=import-error
 from allennlp.training.learning_rate_schedulers import (  # pylint: disable=import-error
     LearningRateScheduler,
@@ -827,9 +829,7 @@ class SamplingMultiTaskTrainer:
             max_data_points = min(task.n_val_examples, self._val_data_limit)
         else:
             max_data_points = task.n_val_examples
-        val_generator = BasicIterator(batch_size, instances_per_epoch=max_data_points)(
-            task.val_data, num_epochs=1, shuffle=False
-        )
+        val_generator = BasicIterator(batch_size, instances_per_epoch=max_data_points)(task.val_data, num_epochs=1, shuffle=False)
         n_val_batches = math.ceil(max_data_points / batch_size)
         all_val_metrics["%s_loss" % task.name] = 0.0
 

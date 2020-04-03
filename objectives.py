@@ -46,15 +46,3 @@ def BERT_MLM_objective(target_ids, token_indexer):
                              target_ids,
                              masking_id * torch.ones_like(target_ids))
     return masked_ids
-
-def get_random_mask(vector_length,dim,masking_fraction = None,untouched_idxs=[]):
-    '''
-    Returns a boolean 1D tensor of length vector_length where a fraction masking_fraction of the positions are masked (set to False)
-    '''
-    if masking_fraction == None:
-        masking_fraction = FLAGS.masking_fraction
-    mask = (torch.rand(vector_length) > FLAGS.masking_fraction) | \
-                (target_ids.cpu().apply_(lambda x: x in token_indexer.all_special_ids).cuda(target_ids.device).to(torch.bool))
-    masked_ids = torch.where(condition,
-                             target_ids,
-                             masking_id * torch.ones_like(target_ids))

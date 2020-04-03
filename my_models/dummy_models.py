@@ -18,7 +18,7 @@ class RandomMLMModel(Model):
         super().__init__(vocab)
         self.dummy_param = torch.nn.Parameter(torch.rand(1, requires_grad=True))
 
-    def forward(self, target_ids, masked_ids, padding_mask) -> Dict[str, torch.Tensor]:
+    def forward(self, target_ids, input_ids, padding_mask) -> Dict[str, torch.Tensor]:
         tokenizer = TOKENIZER_MAPPING[FLAGS.model]
         vocab_scores = torch.rand(target_ids.shape[0], target_ids.shape[1], tokenizer.vocab_size).cuda()
         result_dict = {}
@@ -41,23 +41,23 @@ class ConstantMLMModel(Model):
         self.dummy_param = torch.nn.Parameter(torch.rand(1, requires_grad=True))
         self.token_counts = Counter()
 
-    def forward(self, target_ids, masked_ids, padding_mask) -> Dict[str, torch.Tensor]:
+    def forward(self, target_ids, input_ids, padding_mask) -> Dict[str, torch.Tensor]:
         tokenizer = TOKENIZER_MAPPING[FLAGS.model]
-        float_masked_ids = masked_ids.to(torch.float).clone()
+        float_input_ids = input_ids.to(torch.float).clone()
         # Replace mask-ids with random floats to make sure they are not the most common element
-        maskless_masked_ids = torch.where(masked_ids == tokenizer.mask_token_id, torch.rand_like(float_masked_ids), float_masked_ids)
+        maskless_input_ids = torch.where(input_ids == tokenizer.mask_token_id, torch.rand_like(float_input_ids), float_input_ids)
         # Pick the most common element in each sample
-        most_common_ids = maskless_masked_ids.mode()[0].to(torch.long)
+        most_common_ids = maskless_input_ids.mode()[0].to(torch.long)
         vocab_scores = torch.zeros(target_ids.shape[0], target_ids.shape[1], tokenizer.vocab_size).cuda()
 
-        mask_idxs = (masked_ids == tokenizer.mask_token_id).nonzero()
+        mask_idxs = (input_ids == tokenizer.mask_token_id).nonzero()
         for batch_idx, common_id in enumerate(most_common_ids.tolist()): #TODO maybe change loss calculation to only consider masked positions
             single_sample_mask_idxs = mask_idxs[(mask_idxs[:, 0] == batch_idx).nonzero().squeeze(1)]
-            for sequence_idx in range(masked_ids.shape[1]):
+            for sequence_idx in range(input_ids.shape[1]):
                 if sequence_idx in single_sample_mask_idxs:
                     vocab_scores[batch_idx, sequence_idx, common_id] = 1 #TODO check if this works
                 else:
-                    existing_id = masked_ids[batch_idx,sequence_idx]
+                    existing_id = input_ids[batch_idx,sequence_idx]
                     vocab_scores[batch_idx, sequence_idx, existing_id] = 1
         result_dict = {}
         if target_ids is not None:

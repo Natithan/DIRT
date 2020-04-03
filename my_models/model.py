@@ -30,10 +30,10 @@ class DIRTLMHead(Model):
     def get_metrics(self, **kwargs):
         return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
 
-    def forward(self, masked_ids, padding_mask, masked_lm_labels=None):
+    def forward(self, input_ids, padding_mask, masked_lm_labels=None):
 
         # ENCODING
-        embedded_inputs = self.embedder(masked_ids)
+        embedded_inputs = self.embedder(input_ids)
         encoded, _, cum_layer_loss = self.encoder(MyDropout()(embedded_inputs), padding_mask)
         cum_layer_loss = cum_layer_loss / FLAGS.nb_encoder_layers  # Normalize layer loss by number of times it is calculated
         result_dict = {}
@@ -116,7 +116,7 @@ class FeedForwardBlock(nn.Module):
 class EncoderBlock(nn.Module):
     def __init__(self,finetune_stage=False):
         super().__init__()
-        self.multihead_attention = MultiHeadAttention(finetune_stage)
+        self.multihead_attention = MultiHeadAttention(finetune_stage=finetune_stage)
         # Dropout after every feedforward layer
         self.feedforward = FeedForwardBlock()
         self.finetune_stage = finetune_stage
@@ -213,13 +213,13 @@ class MultiHeadAttention(nn.Module):
         Produces a mask that indicates which replacers not to pay attention to.
         Combines a causal mask (if any) and a padding mask (if any)
         """
-
+        model_device = self.project_k.weight.device
         if self.use_causal_mask:
             causal_mask = tensor([[[0 if value_index <= query_index else -float('inf') for value_index in
                                     range(value_length)] for query_index in range(query_length)]] * (
-                                         d_batch * FLAGS.nb_heads)).cuda()
+                                         d_batch * FLAGS.nb_heads)).cuda(model_device)
         if padding_mask is None:
-            padding_mask = torch.zeros(d_batch, value_length).cuda()
+            padding_mask = torch.zeros(d_batch, value_length).cuda(model_device)
         else:
             padding_mask = torch.log(padding_mask.type(
                 torch.float))  # Because we are masking before pushing through softmax: we need -inf to have ) after softmax, and 0 to have 1 after softmax
@@ -273,7 +273,7 @@ class MultiHeadAttention(nn.Module):
         result_dict['activations'] = self.LayerNorm(att_output + MyDropout()(replacees))  # Include skip-connection
 
         if FLAGS.DIR == 'from_projection' and (not self.finetune_stage):
-            assert torch.equal(replacees, replacers), 'from_projection DIR only works with self-attention.'  # TODO if I go on with this type of regressor, maybe fix to work for encoder-decoder form too
+            assert torch.equal(replacees, replacers), 'from_projection DIR only works with self-attention.'
             result_dict['layer_loss'] = self.anticipation(q, k, v, batch_pos_embeddings, replacees)
 
         return result_dict

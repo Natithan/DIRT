@@ -13,6 +13,7 @@ from transformers import RobertaForMaskedLM, RobertaTokenizer
 class MLMModelWrapper(Model):
     def __init__(self, model,finetune_stage=False):
         super().__init__(Vocabulary())
+        self.finetune_stage=finetune_stage
         self.model = model(finetune_stage)
         self.objective = OBJECTIVE_MAPPING[FLAGS.objective]
         self.token_indexer = TOKENIZER_MAPPING[FLAGS.model]
@@ -20,12 +21,15 @@ class MLMModelWrapper(Model):
     def forward(self, input_ids):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
         new_input_dict = {}
         new_input_dict['padding_mask'] = input_ids != self.token_indexer.pad_token_id
-        new_input_dict['masked_ids'] = self.objective(input_ids, self.token_indexer)
+        if (not self.finetune_stage):
+            new_input_dict['input_ids'] = self.objective(input_ids, self.token_indexer)
+        else:
+            new_input_dict['input_ids'] = input_ids
         new_input_dict['masked_lm_labels'] = torch.where(
-            new_input_dict['masked_ids'] == self.token_indexer.mask_token_id, input_ids,
+            new_input_dict['input_ids'] == self.token_indexer.mask_token_id, input_ids,
             torch.ones_like(input_ids) * (-100))
         result_dict = self.model(**new_input_dict)
-        result_dict['mask'] = (new_input_dict['masked_ids'] == self.token_indexer.mask_token_id)
+        result_dict['mask'] = (new_input_dict['input_ids'] == self.token_indexer.mask_token_id)
         return result_dict
 
     def get_metrics(self, **kwargs):
@@ -49,8 +53,8 @@ class RobertaMLMWrapper(Model):
                 config_name)
             self.model = model_class(config)
 
-    def forward(self, masked_lm_labels, masked_ids, padding_mask):
-        tuple_result = self.model(input_ids=masked_ids, masked_lm_labels=masked_lm_labels, attention_mask=padding_mask)
+    def forward(self, masked_lm_labels, input_ids, padding_mask):
+        tuple_result = self.model(input_ids=input_ids, masked_lm_labels=masked_lm_labels, attention_mask=padding_mask)
         result_dict = {}
         if masked_lm_labels is not None:
             result_dict['loss'] = tuple_result[0]  # Add more parts of output when needed :P

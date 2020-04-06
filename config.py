@@ -1,5 +1,6 @@
 import logging
 from collections import OrderedDict
+from transformers import AlbertTokenizer
 
 import sys
 from datetime import datetime
@@ -8,7 +9,7 @@ from absl import flags
 from pathlib2 import Path
 from transformers import RobertaTokenizer
 
-from constants import READ_ONLY_ROOT, WRITE_ROOT
+from constants import READ_ONLY_ROOT, WRITE_ROOT, HF_MODEL_HANDLE
 from my_utils.flag_util import DefaultOrderedDict, get_gpus_with_enough_memory
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
                     "Folder with trained models and tensorboard logs")
 flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings.")
 flags.DEFINE_integer("num_serialized_models_to_keep", 1, "Number of serialized trained models to store.")
-flags.DEFINE_string("pretrained_weights_handle", '', "Which weights to initialize the model with. Random if empty string is given ")
+flags.DEFINE_bool("use_pretrained_weights", False, "Whether to initialize the model with hf pretrained weights.")
 flags.DEFINE_bool("fresh_data",False,"If True, don't use a pickled version of the data input if that existed")
 flags.DEFINE_string("saved_pretrained_model_path","",
                     "Path to a checkpoint of a pretrained model. "
@@ -62,15 +63,16 @@ flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked dur
 # Flags that determine what the model looks like
 flags.DEFINE_string("model", "my_model", "Name of the model to use (see MODEL_MAPPING)")
 flags.DEFINE_string("DIR",'',"Which variant of distributed internal regression to employ. Options are: top_down, from_projection, or empty if not using DIR (default)")
-flags.DEFINE_string("tokenizer", "", "Which tokenizer to use. Currently everything defaults to RobertaTokenizer :P")
-flags.DEFINE_integer("d_emb", 72, "Size of token encodings before contextualization")
-flags.DEFINE_integer("d_hidden", 768, "Size of token encodings in hidden layers (contextualized)")
-flags.DEFINE_integer("d_ff", 3072, "Number of hidden units in feedforward parts of attention blocks")
-flags.DEFINE_integer("nb_heads", 8, "Number of attention heads")
+flags.DEFINE_integer("d_emb", 128, "Size of token encodings before contextualization")
+flags.DEFINE_integer("d_hidden", 1024, "Size of token encodings in hidden layers (contextualized)")
+flags.DEFINE_integer("d_ff", 4096, "Number of hidden units in feedforward parts of attention blocks")
+flags.DEFINE_integer("nb_heads", 16, "Number of attention heads")
 flags.DEFINE_integer("max_seq_length", 512, "Maximum number of tokens to consider per batch")
-flags.DEFINE_integer("nb_encoder_layers", 12, "Number of layers in the encoder.")
+flags.DEFINE_integer("nb_encoder_layers", 24, "Number of layers in the encoder.")
 flags.DEFINE_integer("nb_feedforward_layers", 2,
                      "Number of layers in the feedforward subcomponents of the transformer.")
+flags.DEFINE_string("activation","gelu","Type of nonlinearity to use.")
+flags.DEFINE_string("pos_embeddings","relative","Type of positional encoding to use.")
 
 
 
@@ -100,15 +102,8 @@ assert not (FLAGS.pretrained_model and FLAGS.saved_pretrained_model_path), \
 if FLAGS.pretrained_model:
     FLAGS.saved_pretrained_model_path = Path(WRITE_ROOT,"output","my_model",FLAGS.pretrained_model,"best.th").as_posix()
 
-#TODO adapt this to per-experiment configs
-
-# Maps from my name for models to huggingface shortcut names
-CONFIG_MAPPING = OrderedDict(
-    [
-        ("huggingface_baseline_encoder", "roberta-base",),
-    ]
-)
 from objectives import *
+
 
 OBJECTIVE_MAPPING = OrderedDict(
     [
@@ -116,8 +111,15 @@ OBJECTIVE_MAPPING = OrderedDict(
         ("simple_mlm", BERT_MLM_objective,),
     ]
 )
-TOKENIZER_MAPPING = DefaultOrderedDict(
-    lambda: RobertaTokenizer.from_pretrained(CONFIG_MAPPING['huggingface_baseline_encoder'],cache_dir=FLAGS.cache_dir),
+TOKENIZER = None
+def get_tokenizer():
+    global TOKENIZER # To not reload tokenizer with different calls
+    if TOKENIZER is None:
+        TOKENIZER = AlbertTokenizer.from_pretrained(HF_MODEL_HANDLE)
+    return TOKENIZER
+ACTIVATION_MAPPING = OrderedDict(
     [
+        ("gelu", t5_denoise_spans_objective,),
+        ("relu", BERT_MLM_objective,),
     ]
-    )
+)

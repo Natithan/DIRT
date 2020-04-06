@@ -1,6 +1,9 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 
+from collections import OrderedDict
+
+import re
 from operator import itemgetter
 
 import math
@@ -10,9 +13,11 @@ from allennlp.models import Model
 import torch
 import torch.nn as nn
 from torch import tensor
-from config import FLAGS, TOKENIZER_MAPPING
-from constants import DECODER_START_TOKEN
-from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss
+from transformers import AlbertModel, AlbertForMaskedLM
+
+from config import FLAGS, get_tokenizer
+from constants import DECODER_START_TOKEN, HF_MODEL_HANDLE, TYPE_VOCAB_SIZE
+from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss, get_activation
 
 
 class DIRTLMHead(Model):
@@ -22,19 +27,104 @@ class DIRTLMHead(Model):
         """
         super().__init__(Vocabulary())
         self.embedder = AlbertEmbedder()
-        self.encoder = MySequential(*[EncoderBlock(finetune_stage) for _ in range(FLAGS.nb_encoder_layers)])
+        self.shared_encoder_block = EncoderBlock(finetune_stage)
         self.lm_head = LMHead()
         self.metrics_dict = {}
         self.finetune_stage = finetune_stage
 
+        if FLAGS.use_pretrained_weights:
+            self.load_pretrained_weights()
+
+    def load_pretrained_weights(self):
+        hf_state_dict = AlbertForMaskedLM.from_pretrained(HF_MODEL_HANDLE).state_dict()
+        print(5)
+        repl = {"albert.embeddings": 'embedder',
+                'albert.encoder.embedding_hidden_mapping_in': 'embedder.embedding_to_hidden',
+                'albert.encoder.albert_layer_groups.0.albert_layers.0': 'shared_encoder_block',
+                'attention': 'multihead_attention',
+                'query': 'project_q',
+                'key': 'project_k',
+                'value': 'project_v',
+                'dense': 'project_o',
+                'ffn': 'feedforward.linear_in',
+                'ffn_output': 'feedforward.linear_out', }
+        # use these three lines to do the replacement
+        repl = dict((re.escape(k), v) for k, v in repl.items())
+        pattern = re.compile("|".join(repl.keys()))
+        updated_hf_state_dict = OrderedDict(
+            (pattern.sub(lambda m: repl[re.escape(m.group(0))], k), v) for k, v in hf_state_dict.items())
+        # ['embedder.idx_to_embedding.weight',
+        #  'embedder.token_type_embeddings.weight',
+        #  'embedder.embedding_to_hidden.weight',
+        #  'embedder.embedding_to_hidden.bias',
+        #  'embedder.LayerNorm.weight',
+        #  'embedder.LayerNorm.bias',
+        #  'shared_encoder_block.multihead_attention.project_q.weight',
+        #  'shared_encoder_block.multihead_attention.project_q.bias',
+        #  'shared_encoder_block.multihead_attention.project_k.weight',
+        #  'shared_encoder_block.multihead_attention.project_k.bias',
+        #  'shared_encoder_block.multihead_attention.project_v.weight',
+        #  'shared_encoder_block.multihead_attention.project_v.bias',
+        #  'shared_encoder_block.multihead_attention.project_o.weight',
+        #  'shared_encoder_block.multihead_attention.project_o.bias',
+        #  'shared_encoder_block.multihead_attention.relative_attention_bias.weight',
+        #  'shared_encoder_block.multihead_attention.LayerNorm.weight',
+        #  'shared_encoder_block.multihead_attention.LayerNorm.bias',
+        #  'shared_encoder_block.feedforward.linear_in.weight',
+        #  'shared_encoder_block.feedforward.linear_in.bias',
+        #  'shared_encoder_block.feedforward.linear_out.weight',
+        #  'shared_encoder_block.feedforward.linear_out.bias',
+        #  'shared_encoder_block.feedforward.LayerNorm.weight',
+        #  'shared_encoder_block.feedforward.LayerNorm.bias',
+        #  'lm_head.dense.weight',
+        #  'lm_head.dense.bias',
+        #  'lm_head.LayerNorm.weight',
+        #  'lm_head.LayerNorm.bias',
+        #  'lm_head.decoder.weight',
+        #  'lm_head.decoder.bias']
+
+    # ['albert.embeddings.word_embeddings.weight',
+    #  'albert.embeddings.position_embeddings.weight',
+    #  'albert.embeddings.token_type_embeddings.weight',
+    #  'albert.embeddings.LayerNorm.weight',
+    #  'albert.embeddings.LayerNorm.bias',
+    #  'albert.encoder.embedding_hidden_mapping_in.weight',
+    #  'albert.encoder.embedding_hidden_mapping_in.bias',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.full_layer_layer_norm.weight',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.full_layer_layer_norm.bias',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.query.weight',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.query.bias',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.key.weight',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.key.bias',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.value.weight',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.value.bias',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.dense.weight',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.dense.bias',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.LayerNorm.weight',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.LayerNorm.bias',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.ffn.weight',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.ffn.bias',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.ffn_output.weight',
+    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.ffn_output.bias',
+    #  'albert.pooler.weight',
+    #  'albert.pooler.bias',
+    #  'predictions.bias',
+    #  'predictions.LayerNorm.weight',
+    #  'predictions.LayerNorm.bias',
+    #  'predictions.dense.weight',
+    #  'predictions.dense.bias',
+    #  'predictions.decoder.weight',
+    #  'predictions.decoder.bias']
+
     def get_metrics(self, **kwargs):
         return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
 
-    def forward(self, input_ids, padding_mask, masked_lm_labels=None):
+    def forward(self, input_ids, padding_mask, masked_lm_labels=None,token_type_ids=None):
 
         # ENCODING
-        embedded_inputs = self.embedder(input_ids)
-        encoded, _, cum_layer_loss = self.encoder(MyDropout()(embedded_inputs), padding_mask)
+        encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)])
+        embedded_inputs = self.embedder(input_ids,token_type_ids)
+        encoded, _, cum_layer_loss = encoder(MyDropout()(embedded_inputs), padding_mask)
         cum_layer_loss = cum_layer_loss / FLAGS.nb_encoder_layers  # Normalize layer loss by number of times it is calculated
         result_dict = {}
         result_dict['encoded_activations'] = encoded
@@ -43,7 +133,7 @@ class DIRTLMHead(Model):
 
         if (masked_lm_labels is not None) and (not self.finetune_stage):
             targets = process_targets_for_loss(masked_lm_labels)
-            vocab_scores_contiguous = vocab_scores.contiguous().view(-1, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
+            vocab_scores_contiguous = vocab_scores.contiguous().view(-1, get_tokenizer().vocab_size)
             MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
                                              targets)
             result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
@@ -83,7 +173,7 @@ class LMHead(nn.Module):
         super().__init__()
         self.dense = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
         self.LayerNorm = nn.LayerNorm(FLAGS.d_hidden)
-        self.decoder = nn.Linear(FLAGS.d_hidden, TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
+        self.decoder = nn.Linear(FLAGS.d_hidden, get_tokenizer().vocab_size)
 
     def forward(self, hidden_states):
         return self.decoder(self.LayerNorm(self.dense(
@@ -104,7 +194,7 @@ class FeedForwardBlock(nn.Module):
     def __init__(self):
         super().__init__()
         self.linear_in = nn.Linear(FLAGS.d_hidden, FLAGS.d_ff)
-        self.activation = nn.ReLU()
+        self.activation = get_activation()
         self.linear_out = nn.Linear(FLAGS.d_ff, FLAGS.d_hidden)
         self.LayerNorm = nn.LayerNorm(FLAGS.d_hidden)
 
@@ -201,7 +291,8 @@ class MultiHeadAttention(nn.Module):
                                    FLAGS.d_hidden)  # In line with og t5 code (although not obvious from paper): there
         # for if different d_head_hidden than (FLAGS.d_hidden // FLAGS.nb_heads), here that's not supported atm
         self.use_causal_mask = use_causal_mask
-        self.relative_attention_bias = nn.Embedding(FLAGS.relative_attention_num_buckets, FLAGS.nb_heads)
+        if FLAGS.pos_embeddings == 'relative':
+            self.relative_attention_bias = nn.Embedding(FLAGS.relative_attention_num_buckets, FLAGS.nb_heads)
         self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_hidden)
         self.finetune_stage = finetune_stage
 
@@ -255,10 +346,11 @@ class MultiHeadAttention(nn.Module):
         att_weights = torch.bmm(q_multi_parts,
                                 k_multi_parts.transpose(1, 2))  # shape [d_batch x nb_heads, query_length, value_length]
 
-        pos_embeddings = self.select_pos_embeddings(query_length, value_length, d_batch)
-        batch_pos_embeddings = pos_embeddings.repeat(d_batch, 1, 1)
+        if FLAGS.pos_embeddings == 'relative':
+            pos_embeddings = self.select_pos_embeddings(query_length, value_length)
+            batch_pos_embeddings = pos_embeddings.repeat(d_batch, 1, 1)
 
-        att_weights += batch_pos_embeddings
+            att_weights += batch_pos_embeddings
 
         attention_mask = self.get_attention_mask(padding_mask, d_batch, query_length, value_length)
         att_weights += attention_mask
@@ -278,7 +370,7 @@ class MultiHeadAttention(nn.Module):
 
         return result_dict
 
-    def select_pos_embeddings(self, query_length, value_length, d_batch):
+    def select_pos_embeddings(self, query_length, value_length):
         rel_pos_indices = tensor(
             [[q_idx - k_idx for k_idx in range(value_length)] for q_idx in range(query_length)]) # shape [nb_heads, query_length, value_length]
         bucket_idxs = MultiHeadAttention._relative_position_bucket(rel_pos_indices).cuda(self.relative_attention_bias.weight.device)
@@ -346,12 +438,23 @@ class AlbertEmbedder(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.idx_to_embedding = nn.Embedding(TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size, FLAGS.d_emb)
+        self.idx_to_embedding = nn.Embedding(get_tokenizer().vocab_size, FLAGS.d_emb)
+        self.token_type_embeddings = nn.Embedding(TYPE_VOCAB_SIZE, FLAGS.d_emb)
+
+        if FLAGS.pos_embeddings == 'absolute':
+            self.pos_embeddings == nn.Embedding(FLAGS.max_seq_length,FLAGS.d_emb)
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
         self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_hidden)
 
-    def forward(self, idxs):
-        embedded = self.idx_to_embedding(idxs)
+    def forward(self, ids,token_type_ids=None): #TODO adapt model to include token type ids to deal with downstream SG tasks
+        embedded = self.idx_to_embedding(ids)
+        if token_type_ids is None:
+            token_type_ids = torch.zeros_like(ids)
+        token_embedded = self.token_type_embeddings(token_type_ids)
+        if FLAGS.pos_embeddings == 'absolute':
+            pos_idxs = torch.arange(ids.shape[1], dtype=torch.long, device=ids.device)[None, :].expand(ids.shape)
+            pos_embedded = self.pos_embeddings(pos_idxs)
+            embedded += pos_embedded
         hidden = self.embedding_to_hidden(embedded)
         normalized_dropped_out_hidden = self.LayerNorm(MyDropout()(hidden))
         return normalized_dropped_out_hidden

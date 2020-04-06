@@ -45,3 +45,12 @@ def process_targets_for_loss(target_tokens):
     target_tokens_contiguous = padder(target_tokens).contiguous().view(-1)
 
     return target_tokens_contiguous
+
+def get_activation():
+    if FLAGS.activation == 'relu':
+        return nn.ReLU()
+    elif FLAGS.activation == 'gelu':
+        return nn.GELU()
+    else:
+        raise ValueError('Unsupported activation provided')
+

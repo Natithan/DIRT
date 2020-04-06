@@ -5,7 +5,7 @@ import torch
 from allennlp.models import Model
 from torch import nn
 
-from config import FLAGS, TOKENIZER_MAPPING
+from config import FLAGS, get_tokenizer
 
 
 class RandomMLMModel(Model):
@@ -19,7 +19,7 @@ class RandomMLMModel(Model):
         self.dummy_param = torch.nn.Parameter(torch.rand(1, requires_grad=True))
 
     def forward(self, target_ids, input_ids, padding_mask) -> Dict[str, torch.Tensor]:
-        tokenizer = TOKENIZER_MAPPING[FLAGS.model]
+        tokenizer = get_tokenizer()
         vocab_scores = torch.rand(target_ids.shape[0], target_ids.shape[1], tokenizer.vocab_size).cuda()
         result_dict = {}
         if target_ids is not None:
@@ -42,7 +42,7 @@ class ConstantMLMModel(Model):
         self.token_counts = Counter()
 
     def forward(self, target_ids, input_ids, padding_mask) -> Dict[str, torch.Tensor]:
-        tokenizer = TOKENIZER_MAPPING[FLAGS.model]
+        tokenizer = get_tokenizer()
         float_input_ids = input_ids.to(torch.float).clone()
         # Replace mask-ids with random floats to make sure they are not the most common element
         maskless_input_ids = torch.where(input_ids == tokenizer.mask_token_id, torch.rand_like(float_input_ids), float_input_ids)

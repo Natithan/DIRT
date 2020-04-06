@@ -30,7 +30,7 @@ from allennlp.data.token_indexers import (
 )
 from allennlp.data.tokenizers.token import Token
 
-from config import TOKENIZER_MAPPING, FLAGS
+from config import get_tokenizer, FLAGS
 from jiant.huggingface_transformers_interface import (
     input_module_uses_transformers,
     input_module_tokenizer_name,
@@ -719,7 +719,7 @@ def add_transformers_vocab(vocab, tokenizer_name):
 
 
     if tokenizer_name.startswith("dirt"):
-        tokenizer = TOKENIZER_MAPPING[FLAGS.model]
+        tokenizer = get_tokenizer()
     elif tokenizer_name.startswith("bert-"):
         tokenizer = BertTokenizer.from_pretrained(tokenizer_name, do_lower_case=do_lower_case)
     elif tokenizer_name.startswith("roberta-"):

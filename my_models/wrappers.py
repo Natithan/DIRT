@@ -6,8 +6,10 @@ from typing import Dict, List
 
 from allennlp.data import TokenIndexer, Token, Vocabulary
 
-from config import FLAGS, CONFIG_MAPPING, OBJECTIVE_MAPPING, TOKENIZER_MAPPING
-from transformers import RobertaForMaskedLM, RobertaTokenizer
+from config import FLAGS, OBJECTIVE_MAPPING, get_tokenizer
+from transformers import AlbertForMaskedLM
+
+from constants import HF_MODEL_HANDLE
 
 
 class MLMModelWrapper(Model):
@@ -16,9 +18,9 @@ class MLMModelWrapper(Model):
         self.finetune_stage=finetune_stage
         self.model = model(finetune_stage)
         self.objective = OBJECTIVE_MAPPING[FLAGS.objective]
-        self.token_indexer = TOKENIZER_MAPPING[FLAGS.model]
+        self.token_indexer = get_tokenizer()
 
-    def forward(self, input_ids):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
+    def forward(self, input_ids,token_type_ids=None):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
         new_input_dict = {}
         new_input_dict['padding_mask'] = input_ids != self.token_indexer.pad_token_id
         if (not self.finetune_stage):
@@ -28,6 +30,7 @@ class MLMModelWrapper(Model):
         new_input_dict['masked_lm_labels'] = torch.where(
             new_input_dict['input_ids'] == self.token_indexer.mask_token_id, input_ids,
             torch.ones_like(input_ids) * (-100))
+        new_input_dict['token_type_ids'] = token_type_ids
         result_dict = self.model(**new_input_dict)
         result_dict['mask'] = (new_input_dict['input_ids'] == self.token_indexer.mask_token_id)
         return result_dict
@@ -36,7 +39,9 @@ class MLMModelWrapper(Model):
         return self.model.get_metrics()
 
 
-class RobertaMLMWrapper(Model):
+
+
+class AlbertMLMWrapper(Model): #TODO change this to be AlbertWrapper
     '''
     Wrapper class for huggingface's RobertaForMaskedLM to allow passing it to the AllenNLP trainer
     '''
@@ -44,9 +49,9 @@ class RobertaMLMWrapper(Model):
     def __init__(self, dummy_vocab,finetune_stage=False): #TODO if ever reuse this: adapt to finetune stage
         super().__init__(dummy_vocab)
         self.metrics_dict = {}
-        config_name = CONFIG_MAPPING[FLAGS.model]
-        model_class = RobertaForMaskedLM
-        if FLAGS.pretrained_weights_handle:
+        model_class = AlbertForMaskedLM
+        config_name = HF_MODEL_HANDLE
+        if FLAGS.use_pretrained_weights:
             self.model = model_class.from_pretrained(config_name)
         else:
             config = model_class.config_class.from_pretrained(
@@ -68,39 +73,13 @@ class RobertaMLMWrapper(Model):
         return self.metrics_dict
 
 
-class RobertaTokenizerWrapper(TokenIndexer):
-
-    def __init__(self, namespace='tokens'):
-        super().__init__()
-        self.tokenizer = RobertaTokenizer.from_pretrained(CONFIG_MAPPING[
-                                                              'huggingface_baseline_encoder'])  # TODO maybe refactor later to deal with non-from-pretrained model
-        self.namespace = namespace
-
-    def encode(self, text):
-        return self.tokenizer.encode(text)
-
-    def count_vocab_items(self, token: Token, counter: Dict[str, Dict[str, int]]):
-        text = token.text
-        counter[self.namespace][text] += 1
-
-    def tokens_to_indices(self, tokens: List[Token], vocabulary: Vocabulary, index_name: str):
-        return self.tokenizer.encode(tokens, add_special_tokens=True)
-
-    def get_padding_lengths(self, token) -> Dict[str, int]:
-        pass
-
-    def pad_token_sequence(self, tokens, desired_num_tokens: Dict[str, int],
-                           padding_lengths: Dict[str, int]):
-        pass
-
-
 from my_models.dummy_models import RandomMLMModel, ConstantMLMModel
 
 from my_models.model import DIRTLMHead
 
 MODEL_MAPPING = OrderedDict(
     [
-        ("hf_baseline", RobertaMLMWrapper,),
+        ("hf_baseline", AlbertMLMWrapper,),
         ("my_model", DIRTLMHead,),
         ("random", RandomMLMModel,),
         ("constant", ConstantMLMModel,),

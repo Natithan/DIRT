@@ -59,13 +59,14 @@ class DirtEmbedderModule(nn.Module):
         return s
 
     def forward(self, sent: Dict[str, torch.LongTensor], task_name: str = "") -> torch.FloatTensor:
-        ids, input_mask = self.correct_sent_indexing(sent) #TODO make sure I get some other ids than "unknown unkown unknown ... :P"
+        ids, input_mask = self.correct_sent_indexing(sent)
         hidden_states, lex_seq = [], None
         if self.output_mode not in ["none", "top"]:
             lex_seq = self.model.embeddings.word_embeddings(ids)
             lex_seq = self.model.embeddings.LayerNorm(lex_seq)
         if self.output_mode != "only":
-            output_dict = self.model(ids,padding_mask=input_mask)
+            token_types = self.get_seg_ids(ids, input_mask)
+            output_dict = self.model(ids,padding_mask=input_mask,token_type_ids=token_types)
             hidden_states = [output_dict['encoded_activations']] #only for the last layer atm
         return self.prepare_output(lex_seq, hidden_states, input_mask)
 

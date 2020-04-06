@@ -48,7 +48,3 @@ def load_pretrained_model_for_SG():
     wrapped_model.load_state_dict(updated_state_dict)
     unwrapped_model = wrapped_model.model
     return unwrapped_model
-
-
-def load_pretrained_weights_for_LM(model, pretrained_weights_handle):
-    pass

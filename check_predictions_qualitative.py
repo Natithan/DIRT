@@ -13,7 +13,7 @@ from config import FLAGS
 from pathlib import Path
 
 from text_input_pipeline import GutenbergReader
-from utils.util import get_gpus_with_enough_memory
+from my_utils.util import get_gpus_with_enough_memory
 
 FIXED_DEVICE_IDXS = None #[0]
 # CHOSEN_RUN_DIR = Path('output','constant','same')

@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 from constants import DECODER_START_TOKEN, READ_ONLY_ROOT
 import os
-from config import FLAGS, TOKENIZER_MAPPING
+from config import FLAGS, get_tokenizer
 
 
 def add_custom_tokens(vocab):
@@ -21,7 +21,7 @@ def add_custom_tokens(vocab):
 class GutenbergSplitDataset(Dataset):
     def __init__(self, text_data_path, blob_path):
         super().__init__()
-        self.token_indexer = TOKENIZER_MAPPING[FLAGS.model]
+        self.token_indexer = get_tokenizer()
         self.text_data_path = text_data_path
         self.blob_path = blob_path
         self.data = self.get_data()
@@ -57,8 +57,7 @@ class GutenbergSplitDataset(Dataset):
 
                 for j, line in enumerate(f):
                     token_ids = self.token_indexer.encode(line.decode("utf-8", errors='ignore'),
-                                                          add_special_tokens=False,
-                                                          add_prefix_space=True)  # False to avoid inserting <s> and </s> tokens around every line, as a sequence is made of multiple lines
+                                                          add_special_tokens=False)  # False to avoid inserting <s> and </s> tokens around every line, as a sequence is made of multiple lines
                     running_sequence += token_ids
                     if len(running_sequence) >= max_raw_seq_length:
                         current_sequence = running_sequence[:max_raw_seq_length]
@@ -93,7 +92,7 @@ def get_data_dict():
     val_dataset = GutenbergSplitDataset(Path(FLAGS.data_folder, 'test').as_posix(),
                                           Path(blob_dir_path,f'test_tensor{maybe_mini}').as_posix())
     # vocab = Vocabulary.from_instances(train_dataset + val_dataset,
-    #                                   max_vocab_size=TOKENIZER_MAPPING[FLAGS.tokenizer].vocab_size)
+    #                                   max_vocab_size=get_tokenizer().vocab_size)
     # add_custom_tokens(vocab)
     return {"train": train_dataset,
             "test": test_dataset,

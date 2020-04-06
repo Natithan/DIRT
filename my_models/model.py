@@ -120,7 +120,7 @@ class EncoderBlock(nn.Module):
         # Dropout after every feedforward layer
         self.feedforward = FeedForwardBlock()
         self.finetune_stage = finetune_stage
-        if FLAGS.DIR == 'top_down' and (not self.finetune_stage):
+        if FLAGS.DIR == 'top_down':
             self.top_down_regressor = nn.Sequential(
                 nn.Linear(FLAGS.d_hidden,FLAGS.d_ff),
                 nn.Linear(FLAGS.d_ff,FLAGS.d_hidden),
@@ -205,7 +205,7 @@ class MultiHeadAttention(nn.Module):
         self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_hidden)
         self.finetune_stage = finetune_stage
 
-        if FLAGS.DIR == 'from_projection' and (not self.finetune_stage):
+        if FLAGS.DIR == 'from_projection':
             self.anticipation = Anticipation()
 
     def get_attention_mask(self, padding_mask, d_batch, query_length, value_length):

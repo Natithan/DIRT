@@ -29,7 +29,7 @@ def load_pretrained_model_for_SG():
     flagfile_path = model_path.replace('best.th', 'flagfile.txt')
     model_FLAGS = deepcopy(FLAGS)
     model_FLAGS(["", f"--flagfile={flagfile_path}"]) # Normally first arg is the name of the file to run, not relevant here
-    run_flag_dict = FLAGS.__dict__['__flags']
+    run_flag_dict = FLAGS.__dict__['__flags'] #TODO refactor this: use getattribute instead of the __dict__ maybe
     model_flag_dict = model_FLAGS.__dict__['__flags']
     for f in MODEL_RELEVANT_FLAGS:
         updated_flags=[]

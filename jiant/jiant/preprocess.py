@@ -137,7 +137,7 @@ def _index_split(task, split, indexers, vocab, record_file, model_preprocessing_
         vocab: Vocabulary instance
         record_file: (string) file to write serialized Instances to
         model_preprocessing_interface: packed information from model that effects the task data,
-            including whether to concatenate sentence pair, and how to mark the sentence boundry
+            including whether to concatenate sentence pair, and how to mark the sentence boundary
     """
     log_prefix = "\tTask %s (%s)" % (task.name, split)
     log.info("%s: Indexing from scratch.", log_prefix)
@@ -432,7 +432,7 @@ def build_tasks(
             log_prefix = "\tTask '%s', split '%s'" % (task.name, split)
             relative_path = _get_serialized_record_path(task.name, split, "preproc")
             cache_found = _find_cached_file(
-                args.exp_dir, args.global_ro_exp_dir, relative_path, log_prefix=log_prefix
+                args.exp_dir, args.global_ro_exp_dir, relative_path, log_prefix=log_prefix #TODO change global one to point to arwen, and local one to be in one exp folder with diff runs
             )
             if force_reindex or not cache_found:
                 # Re-index from scratch.
@@ -568,7 +568,7 @@ def get_tasks(args: config.Params, cuda_device: Any) -> (List[Task], List[str], 
 
     """
     data_path = args.data_dir
-    scratch_path = args.exp_dir
+    scratch_path = args.exp_dir #TODO maybe have one exp dir, and change run_dir rather than exp_dir
 
     pretrain_task_names = parse_task_list_arg(args.pretrain_tasks)
     target_task_names = parse_task_list_arg(args.target_tasks)

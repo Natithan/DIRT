@@ -18,7 +18,7 @@ def main(_):
     os.environ["JIANT_PROJECT_PREFIX"] = f'{WRITE_ROOT}/output'
     os.environ["JIANT_DATA_DIR"] = f'{READ_ONLY_ROOT}/data'
     os.environ["WORD_EMBS_FILE"] = '-1'
-    os.environ["GLOBAL_RO_EXP_DIR"] = f'{WRITE_ROOT}/output/DIRT-same'
+    os.environ["GLOBAL_RO_EXP_DIR"] = f'{READ_ONLY_ROOT}/output/DIRT'
     assert len(FLAGS.device_idxs) >0, "No GPU available to run"
     jiant_main(sys.argv[1:])
 

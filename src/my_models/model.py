@@ -77,7 +77,7 @@ class DIRTLMHead(Model):
         encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)])
         embedded_inputs = self.embedder(input_ids,token_type_ids)
         encoded, _, cum_layer_loss = encoder(MyDropout()(embedded_inputs), padding_mask)
-        cum_layer_loss = cum_layer_loss / FLAGS.nb_encoder_layers  # Normalize layer loss by number of times it is calculated
+        cum_layer_loss = cum_layer_loss / FLAGS.nb_encoder_layers  # Average layer loss
         result_dict = {}
         result_dict['encoded_activations'] = encoded
 
@@ -184,10 +184,13 @@ class EncoderBlock(nn.Module):
                 layer_loss = contrastive_L2_loss(in_state, predicted_in_state, mask)
             elif FLAGS.DIR == 'from_projection':
                 layer_loss = attention_output_dict['layer_loss']
+                predicted_in_state = attention_output_dict['internal_prediction']
             else:
                 layer_loss = 0
         else:
             layer_loss = 0
+        if FLAGS.use_prediction:
+            out_state = self.merger(predicted_in_state,)
         return out_state, padding_mask, layer_loss + cum_layer_loss
 
 

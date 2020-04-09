@@ -73,6 +73,7 @@ flags.DEFINE_integer("nb_feedforward_layers", 2,
                      "Number of layers in the feedforward subcomponents of the transformer.")
 flags.DEFINE_string("activation","gelu","Type of nonlinearity to use.")
 flags.DEFINE_string("pos_embeddings","absolute","Type of positional encoding to use.")
+flags.DEFINE_bool("use_prediction",False,"Whether to use internally predicted activations at inference time") #TODO make sure this is also used at finetune time
 
 
 

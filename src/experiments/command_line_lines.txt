@@ -4,3 +4,4 @@ python pipeline.py --run_name=baseline --max_GPUs=1 --d_batch=4 --description='P
 cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf --pretrained_model=baseline --max_GPUs=1 --overrides 'run_name=baseline'; cd ..
 cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf --pretrained_model=top_down --max_GPUs=1 --overrides 'run_name=top_down'; cd ..
 cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf --pretrained_model=from_projection --max_GPUs=1 --overrides 'run_name=from_projection'; cd ..
+python pipeline.py --run_name=baseline --max_GPUs=1 --d_batch=2 --description=''

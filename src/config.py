@@ -36,7 +36,7 @@ flags.DEFINE_string("mode", "", "Flag to allow python console command line argum
 flags.DEFINE_bool("mini", False, "Whether to work with mini data for debugging purposes")
 flags.DEFINE_integer("beam_width", 3, "Width of the beam during the decoding beam search phase.")
 flags.DEFINE_string("data_folder", Path(READ_ONLY_ROOT,"data/Gutenberg").as_posix(), "Folder with train, val and test subfolders containing data")
-flags.DEFINE_string("model_folder", Path(WRITE_ROOT,"output").as_posix(), "Folder with trained models and tensorboard logs") #TODO probs ditch current hierarchy of model -> run
+flags.DEFINE_string("output_folder", Path(WRITE_ROOT,"output","pretraining").as_posix(), "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
                     "Folder with trained models and tensorboard logs")
 flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings.")
@@ -64,22 +64,22 @@ flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked dur
 flags.DEFINE_string("model", "my_model", "Name of the model to use (see MODEL_MAPPING)")
 flags.DEFINE_string("DIR",'',"Which variant of distributed internal regression to employ. Options are: top_down, from_projection, or empty if not using DIR (default)")
 flags.DEFINE_integer("d_emb", 128, "Size of token encodings before contextualization")
-flags.DEFINE_integer("d_hidden", 1024, "Size of token encodings in hidden layers (contextualized)")
-flags.DEFINE_integer("d_ff", 4096, "Number of hidden units in feedforward parts of attention blocks")
+flags.DEFINE_integer("d_hidden", 2048, "Size of token encodings in hidden layers (contextualized)")
+flags.DEFINE_integer("d_ff", 8192, "Number of hidden units in feedforward parts of attention blocks")
 flags.DEFINE_integer("nb_heads", 16, "Number of attention heads")
 flags.DEFINE_integer("max_seq_length", 512, "Maximum number of tokens to consider per batch")
 flags.DEFINE_integer("nb_encoder_layers", 24, "Number of layers in the encoder.")
 flags.DEFINE_integer("nb_feedforward_layers", 2,
                      "Number of layers in the feedforward subcomponents of the transformer.")
 flags.DEFINE_string("activation","gelu","Type of nonlinearity to use.")
-flags.DEFINE_string("pos_embeddings","relative","Type of positional encoding to use.")
+flags.DEFINE_string("pos_embeddings","absolute","Type of positional encoding to use.")
 
 
 
 
 
 # Distributed training stuff
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(6000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(12000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")

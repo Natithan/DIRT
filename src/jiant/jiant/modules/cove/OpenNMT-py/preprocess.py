@@ -168,7 +168,7 @@ def main():
                                     dicts['src'], dicts['tgt'])
 
     if opt.src_vocab is None:
-        saveVocabulary('source', dicts['src'], opt.save_data + '.src.dict')
+        saveVocabulary('source', dicts['src'], opt.save_data + '.dict')
     if opt.tgt_vocab is None:
         saveVocabulary('target', dicts['tgt'], opt.save_data + '.tgt.dict')
 

@@ -5,7 +5,7 @@ import torch.multiprocessing as mp
 
 from torch.utils.data import DataLoader, DistributedSampler
 
-from my_models.wrappers import MLMModelWrapper, MODEL_MAPPING
+from wrappers import MLMModelWrapper, MODEL_MAPPING
 
 from pathlib import Path
 import torch.optim as optim
@@ -17,7 +17,7 @@ from text_input_pipeline import get_data_dict
 from allennlp.training import Checkpointer
 
 from trainer import MyTrainer
-from my_utils.util import cleanup, setup, load_pretrained_weights_for_LM
+from my_utils.util import cleanup, setup
 
 
 def get_loader(dataset, distributed):
@@ -34,7 +34,7 @@ def get_loader(dataset, distributed):
 
 def main(_):
     # Create folders and files to store results and configs
-    run_dir = Path(FLAGS.model_folder, FLAGS.model, FLAGS.run_name)
+    run_dir = Path(FLAGS.output_folder, FLAGS.run_name)
     if not os.path.exists(run_dir):
         os.makedirs(run_dir)
     #Store the run description, if any

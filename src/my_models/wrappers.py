@@ -58,24 +58,25 @@ class AlbertMLMWrapper(Model): #TODO change this to be AlbertWrapper
                 config_name)
             self.model = model_class(config)
 
-    def forward(self, masked_lm_labels, input_ids, padding_mask):
-        tuple_result = self.model(input_ids=input_ids, masked_lm_labels=masked_lm_labels, attention_mask=padding_mask)
+    def forward(self, masked_lm_labels, input_ids, padding_mask,token_type_ids):
+        tuple_result = self.model(input_ids=input_ids, masked_lm_labels=masked_lm_labels, attention_mask=padding_mask,token_type_ids=token_type_ids)
         result_dict = {}
         if masked_lm_labels is not None:
             result_dict['loss'] = tuple_result[0]  # Add more parts of output when needed :P
             self.metrics_dict['crossentropy_loss'] = result_dict['loss']
+            self.metrics_dict['perplexity'] = torch.exp(result_dict['loss']).item()
             result_dict['vocab_scores'] = tuple_result[1]
         else:
             result_dict['vocab_scores'] = tuple_result[0]
         return result_dict
 
     def get_metrics(self, **kwargs):
-        return self.metrics_dict
+        return self.metrics_dict.copy()
 
 
-from my_models.dummy_models import RandomMLMModel, ConstantMLMModel
+from dummy_models import RandomMLMModel, ConstantMLMModel
 
-from my_models.model import DIRTLMHead
+from model import DIRTLMHead
 
 MODEL_MAPPING = OrderedDict(
     [

@@ -37,84 +37,36 @@ class DIRTLMHead(Model):
 
     def load_pretrained_weights(self):
         hf_state_dict = AlbertForMaskedLM.from_pretrained(HF_MODEL_HANDLE).state_dict()
-        print(5)
         repl = {"albert.embeddings": 'embedder',
+                'word_embeddings':'idx_to_embedding',
                 'albert.encoder.embedding_hidden_mapping_in': 'embedder.embedding_to_hidden',
                 'albert.encoder.albert_layer_groups.0.albert_layers.0': 'shared_encoder_block',
+                'attention.dense': 'multihead_attention.project_o',
                 'attention': 'multihead_attention',
+                'full_layer_layer_norm':'feedforward.LayerNorm',
                 'query': 'project_q',
                 'key': 'project_k',
                 'value': 'project_v',
-                'dense': 'project_o',
-                'ffn': 'feedforward.linear_in',
-                'ffn_output': 'feedforward.linear_out', }
+                'ffn.': 'feedforward.linear_in.',
+                'ffn_output': 'feedforward.linear_out',
+                'predictions': 'lm_head', }
         # use these three lines to do the replacement
         repl = dict((re.escape(k), v) for k, v in repl.items())
         pattern = re.compile("|".join(repl.keys()))
         updated_hf_state_dict = OrderedDict(
             (pattern.sub(lambda m: repl[re.escape(m.group(0))], k), v) for k, v in hf_state_dict.items())
-        # ['embedder.idx_to_embedding.weight',
-        #  'embedder.token_type_embeddings.weight',
-        #  'embedder.embedding_to_hidden.weight',
-        #  'embedder.embedding_to_hidden.bias',
-        #  'embedder.LayerNorm.weight',
-        #  'embedder.LayerNorm.bias',
-        #  'shared_encoder_block.multihead_attention.project_q.weight',
-        #  'shared_encoder_block.multihead_attention.project_q.bias',
-        #  'shared_encoder_block.multihead_attention.project_k.weight',
-        #  'shared_encoder_block.multihead_attention.project_k.bias',
-        #  'shared_encoder_block.multihead_attention.project_v.weight',
-        #  'shared_encoder_block.multihead_attention.project_v.bias',
-        #  'shared_encoder_block.multihead_attention.project_o.weight',
-        #  'shared_encoder_block.multihead_attention.project_o.bias',
-        #  'shared_encoder_block.multihead_attention.relative_attention_bias.weight',
-        #  'shared_encoder_block.multihead_attention.LayerNorm.weight',
-        #  'shared_encoder_block.multihead_attention.LayerNorm.bias',
-        #  'shared_encoder_block.feedforward.linear_in.weight',
-        #  'shared_encoder_block.feedforward.linear_in.bias',
-        #  'shared_encoder_block.feedforward.linear_out.weight',
-        #  'shared_encoder_block.feedforward.linear_out.bias',
-        #  'shared_encoder_block.feedforward.LayerNorm.weight',
-        #  'shared_encoder_block.feedforward.LayerNorm.bias',
-        #  'lm_head.dense.weight',
-        #  'lm_head.dense.bias',
-        #  'lm_head.LayerNorm.weight',
-        #  'lm_head.LayerNorm.bias',
-        #  'lm_head.decoder.weight',
-        #  'lm_head.decoder.bias']
+        missing, unexpected = self.load_state_dict(updated_hf_state_dict,strict=False)
+        # Allowed discrepancies: don't care about pooler, and have optional relative attention bias, + there is a 'lm_head.bias' that is only used to set lm head decoder bias to zero, which I' currently ignoring :P
+        for m in missing:
+            if not 'relative_attention_bias' in m: #TODO add DIRT layers as allowed missed ones
+                raise ValueError(f'Unexpected mismatch in loading state dict: {m} not present in pretrained.')
+        for u in unexpected:
+            if not any([s in u for s in ['pooler','position_embeddings','lm_head.bias']]):
+                raise ValueError(f'Unexpected mismatch in loading state dict: {u} in pretrained but not in current model.')
 
-    # ['albert.embeddings.word_embeddings.weight',
-    #  'albert.embeddings.position_embeddings.weight',
-    #  'albert.embeddings.token_type_embeddings.weight',
-    #  'albert.embeddings.LayerNorm.weight',
-    #  'albert.embeddings.LayerNorm.bias',
-    #  'albert.encoder.embedding_hidden_mapping_in.weight',
-    #  'albert.encoder.embedding_hidden_mapping_in.bias',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.full_layer_layer_norm.weight',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.full_layer_layer_norm.bias',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.query.weight',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.query.bias',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.key.weight',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.key.bias',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.value.weight',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.value.bias',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.dense.weight',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.dense.bias',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.LayerNorm.weight',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.attention.LayerNorm.bias',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.ffn.weight',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.ffn.bias',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.ffn_output.weight',
-    #  'albert.encoder.albert_layer_groups.0.albert_layers.0.ffn_output.bias',
-    #  'albert.pooler.weight',
-    #  'albert.pooler.bias',
-    #  'predictions.bias',
-    #  'predictions.LayerNorm.weight',
-    #  'predictions.LayerNorm.bias',
-    #  'predictions.dense.weight',
-    #  'predictions.dense.bias',
-    #  'predictions.decoder.weight',
-    #  'predictions.decoder.bias']
+
+
+
 
     def get_metrics(self, **kwargs):
         return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
@@ -171,13 +123,13 @@ class LMHead(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.dense = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
-        self.LayerNorm = nn.LayerNorm(FLAGS.d_hidden)
-        self.decoder = nn.Linear(FLAGS.d_hidden, get_tokenizer().vocab_size)
+        self.dense = nn.Linear(FLAGS.d_hidden, FLAGS.d_emb)
+        self.LayerNorm = nn.LayerNorm(FLAGS.d_emb)
+        self.decoder = nn.Linear(FLAGS.d_emb, get_tokenizer().vocab_size) #TODO add activation here for consistency with ALBERT
+        self.activation = get_activation()
 
     def forward(self, hidden_states):
-        return self.decoder(self.LayerNorm(self.dense(
-            hidden_states)))  # TODO maybe make a factorized ALBERT-like de-embedder as well? also share weights with output_embeddings.weight = input_embeddings.weight
+        return self.decoder(self.LayerNorm(self.activation(self.dense(hidden_states))))
 
 
 class MyDropout(nn.Dropout):
@@ -232,6 +184,8 @@ class EncoderBlock(nn.Module):
                 layer_loss = contrastive_L2_loss(in_state, predicted_in_state, mask)
             elif FLAGS.DIR == 'from_projection':
                 layer_loss = attention_output_dict['layer_loss']
+            else:
+                layer_loss = 0
         else:
             layer_loss = 0
         return out_state, padding_mask, layer_loss + cum_layer_loss
@@ -442,9 +396,9 @@ class AlbertEmbedder(nn.Module):
         self.token_type_embeddings = nn.Embedding(TYPE_VOCAB_SIZE, FLAGS.d_emb)
 
         if FLAGS.pos_embeddings == 'absolute':
-            self.pos_embeddings == nn.Embedding(FLAGS.max_seq_length,FLAGS.d_emb)
+            self.position_embeddings = nn.Embedding(FLAGS.max_seq_length, FLAGS.d_emb)
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
-        self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_hidden)
+        self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_emb)
 
     def forward(self, ids,token_type_ids=None): #TODO adapt model to include token type ids to deal with downstream SG tasks
         embedded = self.idx_to_embedding(ids)
@@ -453,8 +407,9 @@ class AlbertEmbedder(nn.Module):
         token_embedded = self.token_type_embeddings(token_type_ids)
         if FLAGS.pos_embeddings == 'absolute':
             pos_idxs = torch.arange(ids.shape[1], dtype=torch.long, device=ids.device)[None, :].expand(ids.shape)
-            pos_embedded = self.pos_embeddings(pos_idxs)
+            pos_embedded = self.position_embeddings(pos_idxs)
             embedded += pos_embedded
-        hidden = self.embedding_to_hidden(embedded)
-        normalized_dropped_out_hidden = self.LayerNorm(MyDropout()(hidden))
-        return normalized_dropped_out_hidden
+        normalized_embedded = self.LayerNorm(embedded)
+        hidden = self.embedding_to_hidden(normalized_embedded)
+        dropped_out_hidden = MyDropout()(hidden)
+        return dropped_out_hidden

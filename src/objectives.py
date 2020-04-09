@@ -1,4 +1,4 @@
-import copy
+from copy import deepcopy
 import itertools
 import random
 
@@ -40,8 +40,9 @@ def BERT_MLM_objective(target_ids, token_indexer):
     Produces a tensor of the same shape as masked_lm_labels, but with FLAGS.masking_fraction of the tokens replaces by a mask id
     '''
     masking_id = token_indexer.mask_token_id
+    is_special_token = deepcopy(target_ids).cpu().apply_(lambda x: x in token_indexer.all_special_ids).cuda(target_ids.device).to(torch.bool)
     condition = (torch.rand(target_ids.shape).cuda(target_ids.device) > FLAGS.masking_fraction) | \
-                (target_ids.cpu().apply_(lambda x: x in token_indexer.all_special_ids).cuda(target_ids.device).to(torch.bool))
+                (is_special_token)
     masked_ids = torch.where(condition,
                              target_ids,
                              masking_id * torch.ones_like(target_ids))

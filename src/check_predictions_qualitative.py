@@ -1,7 +1,7 @@
 import os
 import random
 
-from my_models.wrappers import MLMModelWrapper, MODEL_MAPPING
+from wrappers import MLMModelWrapper, MODEL_MAPPING
 
 import sys
 

@@ -6,7 +6,7 @@ import torch
 from torch import distributed as dist
 
 from config import FLAGS, MODEL_RELEVANT_FLAGS
-from my_models.wrappers import MLMModelWrapper, MODEL_MAPPING
+from wrappers import MLMModelWrapper, MODEL_MAPPING
 
 
 def cleanup():

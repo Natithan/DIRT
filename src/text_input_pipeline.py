@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 from constants import DECODER_START_TOKEN, READ_ONLY_ROOT
 import os
-from config import FLAGS, get_tokenizer
+from config import FLAGS, get_my_tokenizer
 
 
 def add_custom_tokens(vocab):
@@ -21,7 +21,7 @@ def add_custom_tokens(vocab):
 class GutenbergSplitDataset(Dataset):
     def __init__(self, text_data_path, blob_path):
         super().__init__()
-        self.token_indexer = get_tokenizer()
+        self.token_indexer = get_my_tokenizer()
         self.text_data_path = text_data_path
         self.blob_path = blob_path
         self.data = self.get_data()

@@ -30,7 +30,7 @@ from allennlp.data.token_indexers import (
 )
 from allennlp.data.tokenizers.token import Token
 
-from config import get_tokenizer, FLAGS
+from config import get_my_tokenizer, FLAGS
 from jiant.huggingface_transformers_interface import (
     input_module_uses_transformers,
     input_module_tokenizer_name,
@@ -68,13 +68,14 @@ UNK_TOK = "@@UNKNOWN@@"  # AllenNLP unk token
 ALL_SPLITS = ["train", "val", "test"]
 
 
-def _get_serialized_record_path(task_name, split, preproc_dir):
+def _get_serialized_record_path(task_name, split, preproc_dir,indexer):
     """Get the canonical path for a serialized task split."""
-    serialized_record_path = os.path.join(preproc_dir, "{:s}__{:s}_data".format(task_name, split))
+
+    serialized_record_path = os.path.join(preproc_dir, "{:s}__{:s}_data_{:s}tokenized".format(task_name, split,indexer))
     return serialized_record_path
 
 
-def _get_instance_generator(task_name, split, preproc_dir, fraction=None):
+def _get_instance_generator(task_name, split, preproc_dir, fraction=None,indexer=None):
     """Get a lazy generator for the given task and split.
 
     Args:
@@ -88,7 +89,7 @@ def _get_instance_generator(task_name, split, preproc_dir, fraction=None):
     Returns:
         serialize.RepeatableIterator yielding Instance objects
     """
-    filename = _get_serialized_record_path(task_name, split, preproc_dir)
+    filename = _get_serialized_record_path(task_name, split, preproc_dir,indexer)
     assert os.path.isfile(filename), "Record file '%s' not found!" % filename
     return serialize.read_records(filename, repeatable=True, fraction=fraction)
 
@@ -289,14 +290,14 @@ class DIRTIndexerWrapper:
                           vocabulary: Vocabulary,
                           index_name: str) -> Dict[str, List[int]]:
         text_tokens = [t.text for t in tokens]
-        indices = get_tokenizer(self.tokenizer_name).convert_tokens_to_ids(text_tokens)
+        indices = get_my_tokenizer().convert_tokens_to_ids(text_tokens)
         return {index_name: indices}
 
     def get_token_min_padding_length(self): # To deal with what seems like a mistake in the jiant-version of allennlp: is demanded, but is actually _token_min_padding_length
         return 0
 
     def get_padding_token(self) -> int:
-        return get_tokenizer(self.tokenizer_name).pad_token_id
+        return get_my_tokenizer().pad_token_id
 
     def get_padding_lengths(self, token: int) -> Dict[str, int]:  # pylint: disable=unused-argument
         return {}
@@ -389,7 +390,7 @@ def build_tasks(
     # 2) build / load vocab and indexers
     indexers = build_indexers(args)
 
-    vocab_path = os.path.join(args.exp_dir, "vocab")
+    vocab_path = os.path.join(args.exp_dir, "vocab",input_module_tokenizer_name(args.input_module)) #to allow roberta and albert (with diff vocabs) in one exp folder
     if args.reload_vocab or not os.path.exists(vocab_path):
         _build_vocab(args, tasks, vocab_path)
 
@@ -430,13 +431,15 @@ def build_tasks(
         force_reindex = args.reload_indexing and task.name in reindex_tasks
         for split in ALL_SPLITS:
             log_prefix = "\tTask '%s', split '%s'" % (task.name, split)
-            relative_path = _get_serialized_record_path(task.name, split, "preproc")
-            cache_found = _find_cached_file(
+            # To store preprocessed data for models that use different indexers in the same exp directory
+            indexer = input_module_tokenizer_name(args.input_module)
+            relative_path = _get_serialized_record_path(task.name, split, "preproc",indexer)
+            cache_found =_find_cached_file(
                 args.exp_dir, args.global_ro_exp_dir, relative_path, log_prefix=log_prefix #TODO change global one to point to arwen, and local one to be in one exp folder with diff runs
             )
             if force_reindex or not cache_found:
                 # Re-index from scratch.
-                record_file = _get_serialized_record_path(task.name, split, preproc_dir)
+                record_file = _get_serialized_record_path(task.name, split, preproc_dir,indexer)
                 if os.path.exists(record_file) and os.path.islink(record_file):
                     os.remove(record_file)
 
@@ -453,16 +456,17 @@ def build_tasks(
     pretrain_tasks = []
     target_tasks = []
     for task in tasks:
+        indexer = input_module_tokenizer_name(args.input_module)
         # Replace lists of instances with lazy generators from disk.
-        task.val_data = _get_instance_generator(task.name, "val", preproc_dir)
-        task.test_data = _get_instance_generator(task.name, "test", preproc_dir)
+        task.val_data = _get_instance_generator(task.name, "val", preproc_dir,indexer=indexer)
+        task.test_data = _get_instance_generator(task.name, "test", preproc_dir,indexer=indexer)
         # When using pretrain_data_fraction, we need modified iterators for use
         # only on training datasets at pretraining time.
         if task.name in pretrain_task_names:
             log.info("\tCreating trimmed pretraining-only version of " + task.name + " train.")
             task.train_data = _get_instance_generator(
                 task.name, "train", preproc_dir, fraction=args.pretrain_data_fraction
-            )
+            ,indexer=indexer)
             pretrain_tasks.append(task)
         # When using target_train_data_fraction, we need modified iterators
         # only for training datasets at do_target_task_training time.
@@ -470,7 +474,7 @@ def build_tasks(
             log.info("\tCreating trimmed target-only version of " + task.name + " train.")
             task.train_data = _get_instance_generator(
                 task.name, "train", preproc_dir, fraction=args.target_train_data_fraction
-            )
+            ,indexer=indexer)
             target_tasks.append(task)
 
     log.info("\t  Training on %s", ", ".join(pretrain_task_names))
@@ -719,7 +723,7 @@ def add_transformers_vocab(vocab, tokenizer_name):
 
 
     if tokenizer_name.startswith("dirt"):
-        tokenizer = get_tokenizer()
+        tokenizer = get_my_tokenizer()
     elif tokenizer_name.startswith("bert-"):
         tokenizer = BertTokenizer.from_pretrained(tokenizer_name, do_lower_case=do_lower_case)
     elif tokenizer_name.startswith("roberta-"):
@@ -788,8 +792,8 @@ class ModelPreprocessingInterface(object):
         lm_boundary_token_fn = None
 
         if args.input_module.startswith("dirt"):
-            from jiant.huggingface_transformers_interface.modules import DirtEmbedderModule
-            boundary_token_fn = DirtEmbedderModule.apply_boundary_tokens
+            from jiant.huggingface_transformers_interface.modules import AlbertEmbedderModule
+            boundary_token_fn = AlbertEmbedderModule.apply_boundary_tokens
         elif args.input_module.startswith("bert-"):
             from jiant.huggingface_transformers_interface.modules import BertEmbedderModule
 

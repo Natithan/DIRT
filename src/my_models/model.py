@@ -15,7 +15,7 @@ import torch.nn as nn
 from torch import tensor
 from transformers import AlbertModel, AlbertForMaskedLM
 
-from config import FLAGS, get_tokenizer
+from config import FLAGS, get_my_tokenizer
 from constants import DECODER_START_TOKEN, HF_MODEL_HANDLE, TYPE_VOCAB_SIZE
 from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss, get_activation
 
@@ -57,11 +57,19 @@ class DIRTLMHead(Model):
             (pattern.sub(lambda m: repl[re.escape(m.group(0))], k), v) for k, v in hf_state_dict.items())
         missing, unexpected = self.load_state_dict(updated_hf_state_dict,strict=False)
         # Allowed discrepancies: don't care about pooler, and have optional relative attention bias, + there is a 'lm_head.bias' that is only used to set lm head decoder bias to zero, which I' currently ignoring :P
+        ignored_hf_parameters = [
+            'pooler',
+            'position_embeddings',
+            'lm_head.bias']
+        allowed_from_scratch_params = [
+            'relative_attention_bias',
+            'top_down_regressor'
+        ]
         for m in missing:
-            if not 'relative_attention_bias' in m: #TODO add DIRT layers as allowed missed ones
+            if not any([s in m for s in allowed_from_scratch_params]):
                 raise ValueError(f'Unexpected mismatch in loading state dict: {m} not present in pretrained.')
         for u in unexpected:
-            if not any([s in u for s in ['pooler','position_embeddings','lm_head.bias']]):
+            if not any([s in u for s in ignored_hf_parameters]):
                 raise ValueError(f'Unexpected mismatch in loading state dict: {u} in pretrained but not in current model.')
 
 
@@ -85,7 +93,7 @@ class DIRTLMHead(Model):
 
         if (masked_lm_labels is not None) and (not self.finetune_stage):
             targets = process_targets_for_loss(masked_lm_labels)
-            vocab_scores_contiguous = vocab_scores.contiguous().view(-1, get_tokenizer().vocab_size)
+            vocab_scores_contiguous = vocab_scores.contiguous().view(-1, get_my_tokenizer().vocab_size)
             MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
                                              targets)
             result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
@@ -125,7 +133,7 @@ class LMHead(nn.Module):
         super().__init__()
         self.dense = nn.Linear(FLAGS.d_hidden, FLAGS.d_emb)
         self.LayerNorm = nn.LayerNorm(FLAGS.d_emb)
-        self.decoder = nn.Linear(FLAGS.d_emb, get_tokenizer().vocab_size) #TODO add activation here for consistency with ALBERT
+        self.decoder = nn.Linear(FLAGS.d_emb, get_my_tokenizer().vocab_size) #TODO add activation here for consistency with ALBERT
         self.activation = get_activation()
 
     def forward(self, hidden_states):
@@ -164,10 +172,10 @@ class EncoderBlock(nn.Module):
         self.finetune_stage = finetune_stage
         if FLAGS.DIR == 'top_down':
             self.top_down_regressor = nn.Sequential(
-                nn.Linear(FLAGS.d_hidden,FLAGS.d_ff),
-                nn.Linear(FLAGS.d_ff,FLAGS.d_hidden),
+                nn.Linear(FLAGS.d_hidden,FLAGS.d_top_down),
+                nn.Linear(FLAGS.d_top_down,FLAGS.d_hidden),
             )
-
+            # self.top_down_regressor = nn.Sequential()
     def forward(self, in_state, padding_mask,
                 cum_layer_loss=0):
         attention_output_dict = self.multihead_attention(in_state, in_state, padding_mask)
@@ -175,8 +183,8 @@ class EncoderBlock(nn.Module):
         out_state = self.feedforward(att_out)
 
         # Top-down regression
-        if not self.finetune_stage:
-            if FLAGS.DIR == 'top_down': #TODO make sure to only do (internal) denoising task when pretraining
+        if not self.finetune_stage: #TODO make sure it doesn't use all the extra mem here
+            if FLAGS.DIR == 'top_down':
                 masked_in_state, mask = apply_sequence_mask(in_state)
                 masked_att_out = self.multihead_attention(masked_in_state, in_state, padding_mask)['activations']
                 masked_out_state = self.feedforward(masked_att_out) #TODO should add activation? And should add sometimes-not-masking?
@@ -392,7 +400,7 @@ class AlbertEmbedder(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.idx_to_embedding = nn.Embedding(get_tokenizer().vocab_size, FLAGS.d_emb)
+        self.idx_to_embedding = nn.Embedding(get_my_tokenizer().vocab_size, FLAGS.d_emb) #TODO maybe should bump this
         self.token_type_embeddings = nn.Embedding(TYPE_VOCAB_SIZE, FLAGS.d_emb)
 
         if FLAGS.pos_embeddings == 'absolute':
@@ -400,16 +408,17 @@ class AlbertEmbedder(nn.Module):
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
         self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_emb)
 
-    def forward(self, ids,token_type_ids=None): #TODO adapt model to include token type ids to deal with downstream SG tasks
+    def forward(self, ids,token_type_ids=None):
         embedded = self.idx_to_embedding(ids)
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(ids)
         token_embedded = self.token_type_embeddings(token_type_ids)
+        pos_embedded = torch.zeros_like(embedded)
         if FLAGS.pos_embeddings == 'absolute':
-            pos_idxs = torch.arange(ids.shape[1], dtype=torch.long, device=ids.device)[None, :].expand(ids.shape)
+            pos_idxs = torch.arange(ids.shape[1], device=ids.device)[None, :].expand(ids.shape)
             pos_embedded = self.position_embeddings(pos_idxs)
-            embedded += pos_embedded
-        normalized_embedded = self.LayerNorm(embedded)
+        total_embedded = embedded + token_embedded + pos_embedded
+        normalized_embedded = self.LayerNorm(total_embedded)
         hidden = self.embedding_to_hidden(normalized_embedded)
         dropped_out_hidden = MyDropout()(hidden)
         return dropped_out_hidden

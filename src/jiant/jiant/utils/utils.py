@@ -409,7 +409,7 @@ def format_output(obj, cuda_devices):
     """
     if isinstance(cuda_devices, list):
         if not isinstance(obj, torch.Tensor):
-            obj = torch.tensor(obj).cuda()
+            obj = torch.tensor(obj).cuda(cuda_devices[0])
         return obj.unsqueeze(0)
     else:
         return obj

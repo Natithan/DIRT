@@ -14,7 +14,7 @@ to prepare langs input to transformers.XLMModel
 # All the supported input_module from huggingface transformers
 # input_modules mapped to the same string share vocabulary
 transformer_input_module_to_tokenizer_name = {
-    "dirt":"roberta-base",
+    "dirt":"albert",
     "bert-base-uncased": "bert_uncased",
     "bert-large-uncased": "bert_uncased",
     "bert-large-uncased-whole-word-masking": "bert_uncased",

@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 #Flags that should be taken from a loaded model's original flags
 MODEL_RELEVANT_FLAGS = ["model",
                         "DIR",
-                        "tokenizer",
                         "d_emb",
                         "d_hidden",
                         "d_ff",
@@ -51,7 +50,7 @@ flags.DEFINE_string("description","","Informal description of a run, will be sto
 
 # Trainer flags
 flags.DEFINE_integer("patience", 500, "Number of epochs the validation metric can worsen before stopping training.")
-flags.DEFINE_integer("num_epochs", 10000, "Number of epochs to train for.")
+flags.DEFINE_integer("num_epochs", 6000, "Number of epochs to train for.")
 flags.DEFINE_float("learning_rate", 10e-6, "Learning rate")
 
 #Flags determining denoising objective
@@ -66,6 +65,7 @@ flags.DEFINE_string("DIR",'',"Which variant of distributed internal regression t
 flags.DEFINE_integer("d_emb", 128, "Size of token encodings before contextualization")
 flags.DEFINE_integer("d_hidden", 2048, "Size of token encodings in hidden layers (contextualized)")
 flags.DEFINE_integer("d_ff", 8192, "Number of hidden units in feedforward parts of attention blocks")
+flags.DEFINE_integer("d_top_down", 8192, "Number of hidden units in top_down regression")
 flags.DEFINE_integer("nb_heads", 16, "Number of attention heads")
 flags.DEFINE_integer("max_seq_length", 512, "Maximum number of tokens to consider per batch")
 flags.DEFINE_integer("nb_encoder_layers", 24, "Number of layers in the encoder.")
@@ -79,7 +79,7 @@ flags.DEFINE_string("pos_embeddings","absolute","Type of positional encoding to 
 
 
 # Distributed training stuff
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(12000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(6000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")
@@ -112,7 +112,7 @@ OBJECTIVE_MAPPING = OrderedDict(
     ]
 )
 TOKENIZER = None
-def get_tokenizer():
+def get_my_tokenizer():
     global TOKENIZER # To not reload tokenizer with different calls
     if TOKENIZER is None:
         TOKENIZER = AlbertTokenizer.from_pretrained(HF_MODEL_HANDLE)

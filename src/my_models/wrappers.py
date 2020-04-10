@@ -6,7 +6,7 @@ from typing import Dict, List
 
 from allennlp.data import TokenIndexer, Token, Vocabulary
 
-from config import FLAGS, OBJECTIVE_MAPPING, get_tokenizer
+from config import FLAGS, OBJECTIVE_MAPPING, get_my_tokenizer
 from transformers import AlbertForMaskedLM
 
 from constants import HF_MODEL_HANDLE
@@ -18,7 +18,7 @@ class MLMModelWrapper(Model):
         self.finetune_stage=finetune_stage
         self.model = model(finetune_stage)
         self.objective = OBJECTIVE_MAPPING[FLAGS.objective]
-        self.token_indexer = get_tokenizer()
+        self.token_indexer = get_my_tokenizer()
 
     def forward(self, input_ids,token_type_ids=None):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
         new_input_dict = {}

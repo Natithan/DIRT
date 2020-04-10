@@ -8,12 +8,13 @@ from allennlp.modules import scalar_mix
 
 import transformers
 
-from config import FLAGS
+from config import FLAGS, get_my_tokenizer
 from jiant.utils.options import parse_task_list_arg
 from jiant.utils import utils
 from jiant.huggingface_transformers_interface import input_module_tokenizer_name, \
     transformer_input_module_to_tokenizer_name
 from my_utils.util import load_pretrained_model_for_SG
+from wrappers import MODEL_MAPPING
 
 
 class DirtEmbedderModule(nn.Module):
@@ -32,31 +33,19 @@ class DirtEmbedderModule(nn.Module):
         # self.model = transformers.RobertaModel.from_pretrained(
         #     args.input_module, cache_dir=self.cache_dir, output_hidden_states=True
         # )
-        self.model = load_pretrained_model_for_SG()
+        if FLAGS.saved_pretrained_model_path:
+            self.model = load_pretrained_model_for_SG()
+        else:
+            self.model = MODEL_MAPPING[FLAGS.model]()
         self.max_pos = None
 
-        self.tokenizer = transformers.RobertaTokenizer.from_pretrained(
-            transformer_input_module_to_tokenizer_name[args.input_module], cache_dir=self.cache_dir
-        )  # TODO: Speed things up slightly by reusing the previously-loaded tokenizer.
-        self._sep_id = self.tokenizer.convert_tokens_to_ids("</s>")
-        self._cls_id = self.tokenizer.convert_tokens_to_ids("<s>")
-        self._pad_id = self.tokenizer.convert_tokens_to_ids("<pad>")
-        self._unk_id = self.tokenizer.convert_tokens_to_ids("<unk>")
+        self.tokenizer = get_my_tokenizer()
+        self._sep_id = self.tokenizer.sep_token_id
+        self._cls_id = self.tokenizer.cls_token_id
+        self._pad_id = self.tokenizer.pad_token_id
+        self._unk_id = self.tokenizer.unk_token_id
 
         self.parameter_setup(args)
-
-    @staticmethod
-    def apply_boundary_tokens(s1, s2=None, get_offset=False):
-        # RoBERTa-style boundary token padding on string token sequences
-        if s2:
-            s = ["<s>"] + s1 + ["</s>", "</s>"] + s2 + ["</s>"]
-            if get_offset:
-                return s, 1, len(s1) + 3
-        else:
-            s = ["<s>"] + s1 + ["</s>"]
-            if get_offset:
-                return s, 1
-        return s
 
     def forward(self, sent: Dict[str, torch.LongTensor], task_name: str = "") -> torch.FloatTensor:
         ids, input_mask = self.correct_sent_indexing(sent)
@@ -607,7 +596,7 @@ class AlbertEmbedderModule(HuggingfaceTransformersEmbedderModule):
             if get_offset:
                 return s, 1
         return s
-
+    #TODO try to store roberta and albert ids in one dict?
     def forward(self, sent: Dict[str, torch.LongTensor], task_name: str = "") -> torch.FloatTensor:
         ids, input_mask = self.correct_sent_indexing(sent)
         hidden_states, lex_seq = [], None

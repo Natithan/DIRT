@@ -25,7 +25,7 @@ def masked_MSE_loss(target, predicted, mask):
 
 def contrastive_L2_loss(in_state, predicted_in_state, mask):
     if FLAGS.d_batch <= 1:
-        raise ValueError('Using DIR requires batch size bigger than 1 to contrast with')
+        raise ValueError('Using DIR requires batch size bigger than 1 to contrast with TEST CHANGE')
     d_batch = in_state.shape[0]
     negative_loss = sum([masked_MSE_loss(in_state.roll(shifts=i, dims=0), predicted_in_state, mask) for i in
                          range(

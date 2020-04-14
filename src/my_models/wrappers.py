@@ -9,8 +9,6 @@ from allennlp.data import TokenIndexer, Token, Vocabulary
 from config import FLAGS, OBJECTIVE_MAPPING, get_my_tokenizer
 from transformers import AlbertForMaskedLM
 
-from constants import HF_MODEL_HANDLE
-
 
 class MLMModelWrapper(Model):
     def __init__(self, model,finetune_stage=False):
@@ -50,7 +48,7 @@ class AlbertMLMWrapper(Model): #TODO change this to be AlbertWrapper
         super().__init__(dummy_vocab)
         self.metrics_dict = {}
         model_class = AlbertForMaskedLM
-        config_name = HF_MODEL_HANDLE
+        config_name = FLAGS.hf_model_handle
         if FLAGS.use_pretrained_weights:
             self.model = model_class.from_pretrained(config_name)
         else:

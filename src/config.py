@@ -9,7 +9,7 @@ from absl import flags
 from pathlib2 import Path
 from transformers import RobertaTokenizer
 
-from constants import READ_ONLY_ROOT, WRITE_ROOT, HF_MODEL_HANDLE
+from constants import READ_ONLY_ROOT, WRITE_ROOT
 from my_utils.flag_util import DefaultOrderedDict, get_gpus_with_enough_memory
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,8 @@ flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
 flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings.")
 flags.DEFINE_integer("num_serialized_models_to_keep", 1, "Number of serialized trained models to store.")
 flags.DEFINE_bool("use_pretrained_weights", False, "Whether to initialize the model with hf pretrained weights.")
+flags.DEFINE_string("hf_model_handle","albert-xlarge-v1","Name of the huggingface model handle to use for both tokenizer "
+                                                         "and pretrained weights (if those are loaded") #v2 seems to be faulty: https://github.com/huggingface/transformers/pull/1683#issuecomment-556001607
 flags.DEFINE_bool("fresh_data",False,"If True, don't use a pickled version of the data input if that existed")
 flags.DEFINE_string("saved_pretrained_model_path","",
                     "Path to a checkpoint of a pretrained model. "
@@ -49,7 +51,7 @@ flags.DEFINE_string("cache_dir",Path(READ_ONLY_ROOT,"cache").as_posix(),"Directo
 flags.DEFINE_string("description","","Informal description of a run, will be stored in description.txt in the run_name folder")
 
 # Trainer flags
-flags.DEFINE_integer("patience", 500, "Number of epochs the validation metric can worsen before stopping training.")
+flags.DEFINE_integer("patience", 10, "Number of epochs the validation metric can worsen before stopping training.")
 flags.DEFINE_integer("num_epochs", 6000, "Number of epochs to train for.")
 flags.DEFINE_float("learning_rate", 10e-6, "Learning rate")
 
@@ -115,7 +117,7 @@ TOKENIZER = None
 def get_my_tokenizer():
     global TOKENIZER # To not reload tokenizer with different calls
     if TOKENIZER is None:
-        TOKENIZER = AlbertTokenizer.from_pretrained(HF_MODEL_HANDLE)
+        TOKENIZER = AlbertTokenizer.from_pretrained(FLAGS.hf_model_handle)
     return TOKENIZER
 ACTIVATION_MAPPING = OrderedDict(
     [

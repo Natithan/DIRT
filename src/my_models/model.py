@@ -16,7 +16,7 @@ from torch import tensor
 from transformers import AlbertModel, AlbertForMaskedLM
 
 from config import FLAGS, get_my_tokenizer
-from constants import DECODER_START_TOKEN, HF_MODEL_HANDLE, TYPE_VOCAB_SIZE
+from constants import TYPE_VOCAB_SIZE
 from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss, get_activation
 
 
@@ -36,7 +36,7 @@ class DIRTLMHead(Model):
             self.load_pretrained_weights()
 
     def load_pretrained_weights(self):
-        hf_state_dict = AlbertForMaskedLM.from_pretrained(HF_MODEL_HANDLE).state_dict()
+        hf_state_dict = AlbertForMaskedLM.from_pretrained(FLAGS.hf_model_handle).state_dict()
         repl = {"albert.embeddings": 'embedder',
                 'word_embeddings':'idx_to_embedding',
                 'albert.encoder.embedding_hidden_mapping_in': 'embedder.embedding_to_hidden',

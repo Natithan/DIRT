@@ -84,6 +84,7 @@ def select_pool_type(args):
                 or args.input_module.startswith("roberta-")
                 or args.input_module.startswith("albert-")
                 or args.input_module.startswith("xlm-")
+                or args.input_module.startswith("dirt")
             ):
                 pool_type = "first"
             elif (

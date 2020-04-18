@@ -11,7 +11,7 @@ from pathlib import Path
 import torch.optim as optim
 
 from absl import app
-from config import FLAGS
+from config import FLAGS, process_flags
 
 from text_input_pipeline import get_data_dict
 from allennlp.training import Checkpointer
@@ -33,6 +33,7 @@ def get_loader(dataset, distributed):
 
 
 def main(_):
+    process_flags()
     # Create folders and files to store results and configs
     run_dir = Path(FLAGS.output_folder, FLAGS.run_name)
     if not os.path.exists(run_dir):
@@ -58,12 +59,13 @@ def main(_):
 
 
 def train(rank,world_size,model, run_dir, train_dataset, val_dataset):
-
+    process_flags()
     # If distributed, this is now in one of the threads. Setup makes sure it is in sync with other threads
     distributed = (world_size > 1)
     if distributed:
         setup(rank, world_size)
     cuda_id = FLAGS.device_idxs[rank]
+    print(f"Using GPU {cuda_id} from GPUs {FLAGS.device_idxs}")
     model.cuda(cuda_id)
     optimizer = optim.Adam(model.parameters(), lr=FLAGS.learning_rate)
     loader = get_loader(train_dataset, distributed)

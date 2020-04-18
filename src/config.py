@@ -75,13 +75,14 @@ flags.DEFINE_integer("nb_feedforward_layers", 2,
                      "Number of layers in the feedforward subcomponents of the transformer.")
 flags.DEFINE_string("activation","gelu","Type of nonlinearity to use.")
 flags.DEFINE_string("pos_embeddings","absolute","Type of positional encoding to use.")
+flags.DEFINE_float("layernorm_eps",10e-12,"Epsilon to use for Layernorm. Different than default to be in sync with HF Albert")
 
 
 
 
 
 # Distributed training stuff
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(6000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(1000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")
@@ -98,11 +99,12 @@ flags.DEFINE_string("overrides","", "String that indicates which parameters from
 
 
 FLAGS(sys.argv)
-FLAGS.device_idxs = FLAGS.device_idxs[:FLAGS.max_GPUs]
-assert not (FLAGS.pretrained_model and FLAGS.saved_pretrained_model_path), \
-    "You should specify only one of \"saved_pretrained_model_path\" and \"saved_pretrained_model_path\""
-if FLAGS.pretrained_model:
-    FLAGS.saved_pretrained_model_path = Path(WRITE_ROOT,"output","my_model",FLAGS.pretrained_model,"best.th").as_posix()
+def process_flags():
+    FLAGS.device_idxs = [int(idx) for idx in FLAGS.device_idxs][:FLAGS.max_GPUs]
+    assert not (FLAGS.pretrained_model and FLAGS.saved_pretrained_model_path), \
+        "You should specify only one of \"saved_pretrained_model_path\" and \"saved_pretrained_model_path\""
+    if FLAGS.pretrained_model:
+        FLAGS.saved_pretrained_model_path = Path(WRITE_ROOT,"output","my_model",FLAGS.pretrained_model,"best.th").as_posix()
 
 from objectives import *
 

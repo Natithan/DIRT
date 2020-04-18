@@ -36,7 +36,7 @@ class DirtEmbedderModule(nn.Module):
         if FLAGS.saved_pretrained_model_path:
             self.model = load_pretrained_model_for_SG()
         else:
-            self.model = MODEL_MAPPING[FLAGS.model]()
+            self.model = MODEL_MAPPING[FLAGS.model](finetune_stage=True)
         self.max_pos = None
 
         self.tokenizer = get_my_tokenizer()
@@ -598,6 +598,7 @@ class AlbertEmbedderModule(HuggingfaceTransformersEmbedderModule):
         return s
     #TODO try to store roberta and albert ids in one dict?
     def forward(self, sent: Dict[str, torch.LongTensor], task_name: str = "") -> torch.FloatTensor:
+        self.eval()  #TODO REMOVE THIS, temp disabling dropout for deterministicness
         ids, input_mask = self.correct_sent_indexing(sent)
         hidden_states, lex_seq = [], None
         if self.output_mode not in ["none", "top"]:

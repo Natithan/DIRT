@@ -31,6 +31,7 @@ class DIRTLMHead(Model):
         self.lm_head = LMHead()
         self.metrics_dict = {}
         self.finetune_stage = finetune_stage
+        self.dropout = MyDropout()
 
         if FLAGS.use_pretrained_weights:
             self.load_pretrained_weights()
@@ -72,19 +73,16 @@ class DIRTLMHead(Model):
             if not any([s in u for s in ignored_hf_parameters]):
                 raise ValueError(f'Unexpected mismatch in loading state dict: {u} in pretrained but not in current model.')
 
-
-
-
-
     def get_metrics(self, **kwargs):
         return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
 
     def forward(self, input_ids, padding_mask, masked_lm_labels=None,token_type_ids=None):
+        self.eval()  #TODO REMOVE THIS, temp disabling dropout for deterministicness
 
         # ENCODING
         encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)])
         embedded_inputs = self.embedder(input_ids,token_type_ids)
-        encoded, _, cum_layer_loss = encoder(MyDropout()(embedded_inputs), padding_mask)
+        encoded, _, cum_layer_loss = encoder(self.dropout(embedded_inputs), padding_mask)
         cum_layer_loss = cum_layer_loss / FLAGS.nb_encoder_layers  # Normalize layer loss by number of times it is calculated
         result_dict = {}
         result_dict['encoded_activations'] = encoded
@@ -156,11 +154,12 @@ class FeedForwardBlock(nn.Module):
         self.linear_in = nn.Linear(FLAGS.d_hidden, FLAGS.d_ff)
         self.activation = get_activation()
         self.linear_out = nn.Linear(FLAGS.d_ff, FLAGS.d_hidden)
-        self.LayerNorm = nn.LayerNorm(FLAGS.d_hidden)
+        self.LayerNorm = InternalLayerNorm(FLAGS.d_hidden)
+        self.dropout = MyDropout()
 
     def forward(self, hidden_in):
-        result = MyDropout()(self.linear_out(self.activation(self.linear_in(hidden_in))))
-        return self.LayerNorm(result + MyDropout()(hidden_in))
+        result = self.dropout(self.linear_out(self.activation(self.linear_in(hidden_in))))
+        return self.LayerNorm(result + self.dropout(hidden_in))
 
 
 class EncoderBlock(nn.Module):
@@ -255,9 +254,9 @@ class MultiHeadAttention(nn.Module):
         self.use_causal_mask = use_causal_mask
         if FLAGS.pos_embeddings == 'relative':
             self.relative_attention_bias = nn.Embedding(FLAGS.relative_attention_num_buckets, FLAGS.nb_heads)
-        self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_hidden)
+        self.LayerNorm = InternalLayerNorm(FLAGS.d_hidden)
         self.finetune_stage = finetune_stage
-
+        self.dropout = MyDropout()
         if FLAGS.DIR == 'from_projection':
             self.anticipation = Anticipation()
 
@@ -301,13 +300,13 @@ class MultiHeadAttention(nn.Module):
         # This reshaping slices the last dimension and stacks those slices along the first dimension
         # In the resulting first dimension, first come all slices from the first batch, then from the second, and so on
         # This is relevant for how to add the position embeddings: they are the same per batch, but not per slice
-        q_multi_parts = q.contiguous().view(d_batch * FLAGS.nb_heads, query_length, d_head_hidden)
-        k_multi_parts = k.contiguous().view(d_batch * FLAGS.nb_heads, value_length, d_head_hidden)
-        v_multi_parts = v.contiguous().view(d_batch * FLAGS.nb_heads, value_length, d_head_hidden)
+        q_multi_parts = q.transpose(1,2).contiguous().view(d_batch * FLAGS.nb_heads, d_head_hidden, query_length).transpose(1,2) #Transpose: so each head has the first slice _of every sequence element_
+        k_multi_parts = k.transpose(1,2).contiguous().view(d_batch * FLAGS.nb_heads, d_head_hidden, value_length).transpose(1,2)
+        v_multi_parts = v.transpose(1,2).contiguous().view(d_batch * FLAGS.nb_heads, d_head_hidden, value_length).transpose(1,2)
 
         att_weights = torch.bmm(q_multi_parts,
                                 k_multi_parts.transpose(1, 2))  # shape [d_batch x nb_heads, query_length, value_length]
-
+        att_weights /= math.sqrt(d_head_hidden) # Scaling to be in line with Albert (even if t5 didn't do this)
         if FLAGS.pos_embeddings == 'relative':
             pos_embeddings = self.select_pos_embeddings(query_length, value_length)
             batch_pos_embeddings = pos_embeddings.repeat(d_batch, 1, 1)
@@ -318,13 +317,13 @@ class MultiHeadAttention(nn.Module):
         att_weights += attention_mask
 
         att_weights = nn.Softmax(dim=-1)(att_weights)
-        att_weights = MyDropout()(att_weights)
+        att_weights = self.dropout(att_weights)
 
         att_output_multi_parts = torch.bmm(att_weights,
                                            v_multi_parts)  # [d_batch*num_heads,query_length, d_head_hidden] from [d_batch*num_heads, query_length, value_length] x [d_batch*num_heads,value_length, d_head_hidden]
-        att_output = att_output_multi_parts.contiguous().view(d_batch, query_length, FLAGS.d_hidden)
-        att_output = self.project_o(att_output)
-        result_dict['activations'] = self.LayerNorm(att_output + MyDropout()(replacees))  # Include skip-connection
+        att_output = att_output_multi_parts.transpose(1,2).contiguous().view(d_batch, FLAGS.d_hidden, query_length).transpose(1,2)
+        att_output = self.project_o(att_output) # Ok THIS I did better than HF :D
+        result_dict['activations'] = self.LayerNorm(att_output + self.dropout(replacees))  # Include skip-connection
 
         if FLAGS.DIR == 'from_projection' and (not self.finetune_stage):
             assert torch.equal(replacees, replacers), 'from_projection DIR only works with self-attention.'
@@ -392,7 +391,11 @@ class MultiHeadAttention(nn.Module):
         bucket_indices += torch.where(is_small, n, val_if_large)
         return bucket_indices
 
-
+class InternalLayerNorm(torch.nn.LayerNorm):
+    # To be in accordance with HF Albert
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.eps = FLAGS.layernorm_eps
 class AlbertEmbedder(nn.Module):
     """
     Factorized embedder, as proposed in the ALBERT paper: http://arxiv.org/abs/1909.11942
@@ -400,14 +403,14 @@ class AlbertEmbedder(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.idx_to_embedding = nn.Embedding(get_my_tokenizer().vocab_size, FLAGS.d_emb) #TODO maybe should bump this
+        self.idx_to_embedding = nn.Embedding(get_my_tokenizer().vocab_size, FLAGS.d_emb)
         self.token_type_embeddings = nn.Embedding(TYPE_VOCAB_SIZE, FLAGS.d_emb)
 
         if FLAGS.pos_embeddings == 'absolute':
             self.position_embeddings = nn.Embedding(FLAGS.max_seq_length, FLAGS.d_emb)
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
-        self.LayerNorm = torch.nn.LayerNorm(FLAGS.d_emb)
-
+        self.LayerNorm = InternalLayerNorm(FLAGS.d_emb)
+        self.dropout = MyDropout()
     def forward(self, ids,token_type_ids=None):
         embedded = self.idx_to_embedding(ids)
         if token_type_ids is None:
@@ -419,6 +422,6 @@ class AlbertEmbedder(nn.Module):
             pos_embedded = self.position_embeddings(pos_idxs)
         total_embedded = embedded + token_embedded + pos_embedded
         normalized_embedded = self.LayerNorm(total_embedded)
-        hidden = self.embedding_to_hidden(normalized_embedded)
-        dropped_out_hidden = MyDropout()(hidden)
-        return dropped_out_hidden
+        dropped_out_embedded = self.dropout(normalized_embedded)
+        hidden = self.embedding_to_hidden(dropped_out_embedded)
+        return hidden

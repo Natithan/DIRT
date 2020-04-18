@@ -8,7 +8,7 @@ from absl import app
 from constants import READ_ONLY_ROOT,WRITE_ROOT
 log.basicConfig(
     format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
-)  # noqa
+)
 
 import sys
 

@@ -520,7 +520,7 @@ def build_task_modules(args, tasks, model, d_sent, d_emb, embedder, vocab):
         # If the name of the task is different than the classifier it should use
         # then skip the module creation.
         if task.name != model._get_task_params(task.name).get("use_classifier", task.name):
-            log.info("Name of the task is different than the classifier it should use")
+            log.info(f"Name of the task ({task.name}) is different than the classifier it should use ({model._get_task_params(task.name).get('use_classifier', task.name)})")
             continue
         build_task_specific_modules(task, model, d_sent, d_emb, vocab, embedder, args)
 

@@ -82,7 +82,7 @@ def train(rank,world_size,model, run_dir, train_dataset, val_dataset):
                                      model_save_interval=FLAGS.model_save_interval,
                                      checkpointer=checkpointer,
                                      distributed=distributed,
-                                     world_size=FLAGS.max_GPUs,
+                                     world_size=len(FLAGS.device_idxs),
                                      cuda_device=cuda_id)
     trainer.train()
 

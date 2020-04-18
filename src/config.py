@@ -27,7 +27,7 @@ MODEL_RELEVANT_FLAGS = ["model",
                         "relative_attention_num_buckets"]
 # TODO maybe make multiple configs? Or maybe keep model hyperparams in some config, and use FLAGS just for folder names etc
 FLAGS = flags.FLAGS
-flags.DEFINE_integer("d_batch", 8, "Batch size. If DIR is not none, this is also the number of negative samples + 1")
+flags.DEFINE_integer("d_batch", 2, "Batch size. If DIR is not none, this is also the number of negative samples + 1")
 flags.DEFINE_float("DIR_loss_fraction",0.95,"Fraction of the total loss that the distributed regression loss accounts for")
 flags.DEFINE_integer("model_save_interval", 300, "Number of seconds after which a model will be checkpointed, even within an epoch")
 flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
@@ -82,7 +82,7 @@ flags.DEFINE_float("layernorm_eps",10e-12,"Epsilon to use for Layernorm. Differe
 
 
 # Distributed training stuff
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(1000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(8000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")

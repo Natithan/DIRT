@@ -395,7 +395,7 @@ def initial_setup(args: config.Params, cl_args: argparse.Namespace) -> (config.P
     if EMAIL_NOTIFIER:
         EMAIL_NOTIFIER(body="Starting run.", prefix="")
 
-    _log_git_info()
+    # _log_git_info()
     config_file = os.path.join(args.run_dir, "params.conf")
     config.write_params(args, config_file)
 

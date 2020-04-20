@@ -76,6 +76,7 @@ flags.DEFINE_integer("nb_feedforward_layers", 2,
 flags.DEFINE_string("activation","gelu","Type of nonlinearity to use.")
 flags.DEFINE_string("pos_embeddings","absolute","Type of positional encoding to use.")
 flags.DEFINE_float("layernorm_eps",10e-12,"Epsilon to use for Layernorm. Different than default to be in sync with HF Albert")
+flags.DEFINE_integer("top_down_distance",2,"For internal prediction: number of layers to feed masked internal activations through before using result to predict masked activation")
 
 
 

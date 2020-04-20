@@ -89,8 +89,8 @@ def get_data_dict():
                                           Path(blob_dir_path,f'train_tensor{maybe_mini}').as_posix())
     test_dataset = GutenbergSplitDataset(Path(FLAGS.data_folder, 'test').as_posix(),
                                           Path(blob_dir_path,f'test_tensor{maybe_mini}').as_posix())
-    val_dataset = GutenbergSplitDataset(Path(FLAGS.data_folder, 'test').as_posix(),
-                                          Path(blob_dir_path,f'test_tensor{maybe_mini}').as_posix())
+    val_dataset = GutenbergSplitDataset(Path(FLAGS.data_folder, 'val').as_posix(),
+                                          Path(blob_dir_path,f'val_tensor{maybe_mini}').as_posix())
     # vocab = Vocabulary.from_instances(train_dataset + val_dataset,
     #                                   max_vocab_size=get_tokenizer().vocab_size)
     # add_custom_tokens(vocab)

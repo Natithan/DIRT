@@ -598,7 +598,6 @@ class AlbertEmbedderModule(HuggingfaceTransformersEmbedderModule):
         return s
     #TODO try to store roberta and albert ids in one dict?
     def forward(self, sent: Dict[str, torch.LongTensor], task_name: str = "") -> torch.FloatTensor:
-        self.eval()  #TODO REMOVE THIS, temp disabling dropout for deterministicness
         ids, input_mask = self.correct_sent_indexing(sent)
         hidden_states, lex_seq = [], None
         if self.output_mode not in ["none", "top"]:

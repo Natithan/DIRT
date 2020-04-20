@@ -28,6 +28,20 @@ class DIRTLMHead(Model):
         super().__init__(Vocabulary())
         self.embedder = AlbertEmbedder()
         self.shared_encoder_block = EncoderBlock(finetune_stage)
+        if FLAGS.DIR == 'combo':
+            self.combiner = #TODO
+        self.shared_top_down_predictor = nn.Sequential(
+            nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+            nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
+        )
+        self.shared_from_left_predictor = nn.Sequential(
+            nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+            nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
+        )
+        self.shared_from_right_predictor = nn.Sequential(
+            nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+            nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
+        )
         self.lm_head = LMHead()
         self.metrics_dict = {}
         self.finetune_stage = finetune_stage
@@ -77,10 +91,15 @@ class DIRTLMHead(Model):
         return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
 
     def forward(self, input_ids, padding_mask, masked_lm_labels=None,token_type_ids=None):
-        self.eval()  #TODO REMOVE THIS, temp disabling dropout for deterministicness
 
         # ENCODING
-        encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)])
+        clean = (FLAGS.DIR != 'combo')
+        encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],
+                               top_down=self.shared_top_down_predictor,
+                               from_left=self.shared_from_left_predictor,
+                               from_right=self.shared_from_right_predictor,
+                               combiner=self.combiner
+                               clean=clean)
         embedded_inputs = self.embedder(input_ids,token_type_ids)
         encoded, _, cum_layer_loss = encoder(self.dropout(embedded_inputs), padding_mask)
         cum_layer_loss = cum_layer_loss / FLAGS.nb_encoder_layers  # Normalize layer loss by number of times it is calculated
@@ -198,19 +217,42 @@ class EncoderBlock(nn.Module):
         return out_state, padding_mask, layer_loss + cum_layer_loss
 
 
-class MySequential(nn.Sequential):
+class MySequential(nn.Sequential): #TODO move this to a for loop in enclosing module
     '''
     Allows Sequential to pass on multiple in- and outputs
     '''
+    def __init__(self,*args,top_down=None,from_left=None,from_right=None,combiner=None,clean=True):
+        super().__init__(*args)
+        self.clean = clean
+        if not self.clean:
+            self.top_down_predictor = top_down
+            self.from_left_predictor = from_left
+            self.from_right_predictor = from_right
+            self.combiner = combiner
 
     def forward(self, *inputs):
-        for module in self._modules.values():
+        layers = self[:FLAGS.nb_encoder_layers]
+        for layer_idx, module in enumerate(layers):
+            if FLAGS.DIR == 'combo' and (layer_idx + FLAGS.top_down_distance < len(layers)) and (not self.clean):
+                in_activations, padding_mask = inputs
+                masked_inputs, DIRT_mask = apply_sequence_mask(in_activations)
+                contextualizer = layers[layer_idx:layer_idx + FLAGS.top_down_distance] #Clean true by default
+                top_down_inputs,_, _ = contextualizer(masked_inputs,padding_mask)
+                left_adjacent_inputs = in_activations.roll(shifts=1,dims=1)
+                right_adjacent_inputs = in_activations.roll(shifts=-1,dims=1)
+                # TODO make sure to only consider positions with legit adjacent positions: not also masked, and not at the edge
+                top_down_prediction = self.top_down_predictor(top_down_inputs)
+                from_left_prediction = self.from_left_predictor(left_adjacent_inputs)
+                from_right_prediction = self.from_right_predictor(right_adjacent_inputs)
+                combined_prediction = self.combiner(top_down_prediction,from_left_prediction,from_right_prediction)
+                layer_loss = contrastive_L2_loss(in_activations, combined_prediction, DIRT_mask)
+
             if type(inputs) == tuple:
                 inputs = module(*inputs)
             else:
                 inputs = module(inputs)
-        return inputs
 
+        return inputs
 
 
 class Anticipation(nn.Module):

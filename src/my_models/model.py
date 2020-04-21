@@ -17,7 +17,8 @@ from transformers import AlbertModel, AlbertForMaskedLM
 
 from config import FLAGS, get_my_tokenizer
 from constants import TYPE_VOCAB_SIZE
-from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss, get_activation
+from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss, get_activation, \
+    sizeof_fmt, sz
 
 
 class DIRTLMHead(Model):
@@ -29,17 +30,20 @@ class DIRTLMHead(Model):
         self.embedder = AlbertEmbedder()
         self.shared_encoder_block = EncoderBlock(finetune_stage)
         if FLAGS.DIR == 'combo':
-            self.combiner = #TODO
+            self.combiner = nn.Linear(3*FLAGS.d_hidden,FLAGS.d_hidden)
         self.shared_top_down_predictor = nn.Sequential(
             nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+            get_activation(),
             nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
         )
         self.shared_from_left_predictor = nn.Sequential(
             nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+            get_activation(),
             nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
         )
         self.shared_from_right_predictor = nn.Sequential(
             nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+            get_activation(),
             nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
         )
         self.lm_head = LMHead()
@@ -98,7 +102,7 @@ class DIRTLMHead(Model):
                                top_down=self.shared_top_down_predictor,
                                from_left=self.shared_from_left_predictor,
                                from_right=self.shared_from_right_predictor,
-                               combiner=self.combiner
+                               combiner=self.combiner,
                                clean=clean)
         embedded_inputs = self.embedder(input_ids,token_type_ids)
         encoded, _, cum_layer_loss = encoder(self.dropout(embedded_inputs), padding_mask)
@@ -232,26 +236,33 @@ class MySequential(nn.Sequential): #TODO move this to a for loop in enclosing mo
 
     def forward(self, *inputs):
         layers = self[:FLAGS.nb_encoder_layers]
-        for layer_idx, module in enumerate(layers):
+        cum_layer_loss = 0
+        for layer_idx, module in enumerate(layers): #TODO fix heavy mem overhead
             if FLAGS.DIR == 'combo' and (layer_idx + FLAGS.top_down_distance < len(layers)) and (not self.clean):
-                in_activations, padding_mask = inputs
+                in_activations, padding_mask = inputs[:2]
                 masked_inputs, DIRT_mask = apply_sequence_mask(in_activations)
                 contextualizer = layers[layer_idx:layer_idx + FLAGS.top_down_distance] #Clean true by default
                 top_down_inputs,_, _ = contextualizer(masked_inputs,padding_mask)
                 left_adjacent_inputs = in_activations.roll(shifts=1,dims=1)
                 right_adjacent_inputs = in_activations.roll(shifts=-1,dims=1)
-                # TODO make sure to only consider positions with legit adjacent positions: not also masked, and not at the edge
-                top_down_prediction = self.top_down_predictor(top_down_inputs)
+                top_down_prediction = self.top_down_predictor(top_down_inputs) # #TODO maybe add some dropout in dirt parts
                 from_left_prediction = self.from_left_predictor(left_adjacent_inputs)
                 from_right_prediction = self.from_right_predictor(right_adjacent_inputs)
-                combined_prediction = self.combiner(top_down_prediction,from_left_prediction,from_right_prediction)
+                combined_prediction = self.combiner(torch.cat((top_down_prediction,from_left_prediction,from_right_prediction),
+                                                              dim=-1))
+                # The first and last sequence elements don't have proper left resp. right inputs.
+                # Don't consider these in calculating the loss TODO if use prediction at inference: watch out with using these positions
+                DIRT_mask[0] = True
+                DIRT_mask[-1] = True
                 layer_loss = contrastive_L2_loss(in_activations, combined_prediction, DIRT_mask)
+                cum_layer_loss += layer_loss
 
             if type(inputs) == tuple:
                 inputs = module(*inputs)
             else:
                 inputs = module(inputs)
-
+        if (not self.clean) and FLAGS.DIR == 'combo':
+            inputs[-1] = cum_layer_loss
         return inputs
 
 
@@ -355,15 +366,14 @@ class MultiHeadAttention(nn.Module):
 
             att_weights += batch_pos_embeddings
 
-        attention_mask = self.get_attention_mask(padding_mask, d_batch, query_length, value_length)
-        att_weights += attention_mask
+        att_weights += self.get_attention_mask(padding_mask, d_batch, query_length, value_length) #adding attention mask
 
         att_weights = nn.Softmax(dim=-1)(att_weights)
         att_weights = self.dropout(att_weights)
 
         att_output_multi_parts = torch.bmm(att_weights,
                                            v_multi_parts)  # [d_batch*num_heads,query_length, d_head_hidden] from [d_batch*num_heads, query_length, value_length] x [d_batch*num_heads,value_length, d_head_hidden]
-        att_output = att_output_multi_parts.transpose(1,2).contiguous().view(d_batch, FLAGS.d_hidden, query_length).transpose(1,2)
+        att_output = att_output_multi_parts.transpose(1,2).contiguous().view(d_batch, FLAGS.d_hidden, query_length).transpose(1,2).contiguous() # Last contiguous to make sure mem calculations add up :P
         att_output = self.project_o(att_output) # Ok THIS I did better than HF :D
         result_dict['activations'] = self.LayerNorm(att_output + self.dropout(replacees))  # Include skip-connection
 

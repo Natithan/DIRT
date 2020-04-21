@@ -25,7 +25,7 @@ def masked_MSE_loss(target, predicted, mask):
 
 def contrastive_L2_loss(in_state, predicted_in_state, mask):
     if FLAGS.d_batch <= 1:
-        raise ValueError('Using DIR requires batch size bigger than 1 to contrast with OTHER OVERLAPPING TEST CHANGE')
+        raise ValueError('Using DIR requires batch size bigger than 1 to contrast with')
     d_batch = in_state.shape[0]
     negative_loss = sum([masked_MSE_loss(in_state.roll(shifts=i, dims=0), predicted_in_state, mask) for i in
                          range(
@@ -54,3 +54,29 @@ def get_activation():
     else:
         raise ValueError('Unsupported activation provided')
 
+
+def sizeof_fmt(num, suffix='B'):
+    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Yi', suffix)
+
+def sizeof_mb(num, suffix='B'):
+    for unit in ['','Ki']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Mi', suffix)
+
+
+
+def sz(tensor_or_module):
+    if isinstance(tensor_or_module, torch.Tensor):
+        tensor = tensor_or_module
+        return sizeof_fmt(tensor.nelement() * tensor.element_size())
+    elif isinstance(tensor_or_module, nn.Module):
+        module = tensor_or_module
+        return sizeof_fmt(sum(p.numel() * p.element_size() for p in module.parameters() if p.requires_grad))
+    else:
+        raise ValueError(f"Cannot determine size for argument of type {type(tensor_or_module)}")

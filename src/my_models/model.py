@@ -97,7 +97,7 @@ class DIRTLMHead(Model):
     def forward(self, input_ids, padding_mask, masked_lm_labels=None,token_type_ids=None):
 
         # ENCODING
-        clean = (FLAGS.DIR != 'combo')
+        clean = (FLAGS.DIR != 'combo') or self.finetune_stage
         encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],
                                top_down=self.shared_top_down_predictor,
                                from_left=self.shared_from_left_predictor,

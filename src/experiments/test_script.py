@@ -32,30 +32,30 @@ RUNS = {}
 #     ]
 
 
-current_run_name = "baseline_HFpre_mypre"
-RUNS[current_run_name] = [
-        f"python pretrain.py --max_GPUs=1 --d_batch=2 "
-        f" --use_pretrained_weights "
-        f" --run_name={current_run_name}"
-        f" --learning_rate=0.00000001"
-        f" --description='HFpretrained my baseline WITH mypretrain -> check vs my baseline with no mypretrain, form baseline for DIRT alts. "
-        f"Now with smaller learning rate'",
-
-        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --pretrained_model={current_run_name} --max_GPUs=1 '
-        f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
-    ]
-current_run_name = "baseline_noHFpre_mypre"
-RUNS[current_run_name] = [
-        f"python pretrain.py --max_GPUs=1 --d_batch=2 "
-        f" --run_name={current_run_name}"
-        f" --learning_rate=0.00000001"
-        f" --description='From scratch my Albert with mypretrain -> check if here also ok vs HF Albert + form baseline for DIRT alts, aiming-for-relative-improvements. "
-        f"Now with smaller learning rate'",
-        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --pretrained_model={current_run_name} --max_GPUs=1 '
-        f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
-    ]
+# current_run_name = "baseline_HFpre_mypre"
+# RUNS[current_run_name] = [
+#         f"python pretrain.py --max_GPUs=1 --d_batch=2 "
+#         f" --use_pretrained_weights "
+#         f" --run_name={current_run_name}"
+#         f" --learning_rate=0.00000001"
+#         f" --description='HFpretrained my baseline WITH mypretrain -> check vs my baseline with no mypretrain, form baseline for DIRT alts. "
+#         f"Now with smaller learning rate'",
+#
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#         f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
+#     ]
+# current_run_name = "baseline_noHFpre_mypre"
+# RUNS[current_run_name] = [
+#         f"python pretrain.py --max_GPUs=1 --d_batch=2 "
+#         f" --run_name={current_run_name}"
+#         f" --learning_rate=0.00000001"
+#         f" --description='From scratch my Albert with mypretrain -> check if here also ok vs HF Albert + form baseline for DIRT alts, aiming-for-relative-improvements. "
+#         f"Now with smaller learning rate'",
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#         f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
+#     ]
 # current_run_name = "HFAlbert_noHFpre_mypre"
 # RUNS[current_run_name] = [
 #         f"python pretrain.py --max_GPUs=1 --d_batch=2 "
@@ -66,17 +66,18 @@ RUNS[current_run_name] = [
 #         f'--pretrained_model={current_run_name} --max_GPUs=1 '
 #         f'--overrides "run_name={current_run_name},input_module={FLAGS.hf_model_handle}"; cd ..'
 #     ]
-# current_run_name = "top_down_noHFpre_mypre"
-# RUNS[current_run_name] = [
-#         f"python pretrain.py --max_GPUs=1 --d_batch=2 "
-#         f" --run_name={current_run_name}"
-#         f"--DIR=top_down"
-#         f"--description='No HFpretrain my preffered DIRT alt (aka top_down) with mypretrain -> check if improvement somewhere vs my albert, aiming-for-relative-improvements'",
-#
-#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-#         f'--pretrained_model={current_run_name} --max_GPUs=1 '
-#         f'--overrides "run_name={current_run_name},input_module=dirt"; cd ..'
-#     ]
+current_run_name = "combo_noHFpre_mypre"
+RUNS[current_run_name] = [
+        f"python pretrain.py --max_GPUs=1 --d_batch=4"
+        f" --run_name={current_run_name}"
+        f" --hf_model_handle=albert-base-v2"
+        f" --DIR=combo"
+        f" --description='No HFpretrain my preferred DIRT alt (aka combo) with mypretrain -> check if improvement somewhere vs my albert, aiming-for-relative-improvements'",
+
+        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+        f'--pretrained_model={current_run_name} --max_GPUs=1 '
+        f'--overrides "run_name={current_run_name},input_module=dirt"; cd ..'
+    ]
 # current_run_name = "top_down_HFpre_mypre"
 # RUNS[current_run_name] = [
 #         f"python pretrain.py --max_GPUs=1 --d_batch=2 "

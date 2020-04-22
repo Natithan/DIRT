@@ -1,3 +1,5 @@
+import time
+
 import libtmux
 from config import FLAGS
 
@@ -45,17 +47,24 @@ RUNS = {}
 #         f' --pretrained_model={current_run_name} --max_GPUs=1 '
 #         f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
 #     ]
-# current_run_name = "baseline_noHFpre_mypre"
-# RUNS[current_run_name] = [
-#         f"python pretrain.py --max_GPUs=1 --d_batch=2 "
-#         f" --run_name={current_run_name}"
-#         f" --learning_rate=0.00000001"
-#         f" --description='From scratch my Albert with mypretrain -> check if here also ok vs HF Albert + form baseline for DIRT alts, aiming-for-relative-improvements. "
-#         f"Now with smaller learning rate'",
-#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-#         f' --pretrained_model={current_run_name} --max_GPUs=1 '
-#         f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
-#     ]
+current_run_name = "baseline_noHFpre_mypre_lr10e-8"
+RUNS[current_run_name] = [
+        f"python pretrain.py --max_GPUs=1 --d_batch=2 "
+        f" --run_name={current_run_name}"
+        f" --hf_model_handle=albert-base-v2"
+        f" --learning_rate=10e-8"
+        f" --d_hidden=768"
+        f" --d_ff=3072"
+        f" --d_top_down=3072"
+        f" --nb_heads=12"
+        f" --nb_encoder_layers=12"
+        f" --d_batch=3"
+        f" --description='From scratch my Albert with mypretrain -> form baseline for DIRT alts, aiming-for-relative-improvements. "
+        f"With learning rate same as the one that was successful for baseline_HFpre_mypre'",
+        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+        f' --pretrained_model={current_run_name} --max_GPUs=1 '
+        f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
+    ]
 # current_run_name = "HFAlbert_noHFpre_mypre"
 # RUNS[current_run_name] = [
 #         f"python pretrain.py --max_GPUs=1 --d_batch=2 "
@@ -66,18 +75,24 @@ RUNS = {}
 #         f'--pretrained_model={current_run_name} --max_GPUs=1 '
 #         f'--overrides "run_name={current_run_name},input_module={FLAGS.hf_model_handle}"; cd ..'
 #     ]
-current_run_name = "combo_noHFpre_mypre"
-RUNS[current_run_name] = [
-        f"python pretrain.py --max_GPUs=1 --d_batch=4"
-        f" --run_name={current_run_name}"
-        f" --hf_model_handle=albert-base-v2"
-        f" --DIR=combo"
-        f" --description='No HFpretrain my preferred DIRT alt (aka combo) with mypretrain -> check if improvement somewhere vs my albert, aiming-for-relative-improvements'",
-
-        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f'--pretrained_model={current_run_name} --max_GPUs=1 '
-        f'--overrides "run_name={current_run_name},input_module=dirt"; cd ..'
-    ]
+# current_run_name = "combo_noHFpre_mypre"
+# RUNS[current_run_name] = [
+#         f"python pretrain.py --max_GPUs=1 --d_batch=4"
+#         f" --run_name={current_run_name}"
+#         f" --hf_model_handle=albert-base-v2"
+#         f" --DIR=combo"
+#         f" --d_hidden=768"
+#         f" --d_ff=3072"
+#         f" --d_top_down=3072"
+#         f" --nb_heads=12"
+#         f" --nb_encoder_layers=12"
+#         f" --d_batch=3"
+#         f" --description='No HFpretrain my preferred DIRT alt (aka combo) with mypretrain -> check if improvement somewhere vs my albert, aiming-for-relative-improvements'",
+#
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f'--pretrained_model={current_run_name} --max_GPUs=1 '
+#         f'--overrides "run_name={current_run_name},input_module=dirt"; cd ..'
+#     ]
 # current_run_name = "top_down_HFpre_mypre"
 # RUNS[current_run_name] = [
 #         f"python pretrain.py --max_GPUs=1 --d_batch=2 "
@@ -121,3 +136,4 @@ for run_name, commands in RUNS.items():
         print(f"Sending command: {command}")
         print(f"To window: {w['window_name']}")
         pane.send_keys(command)
+    time.sleep(10) # To make sure the same GPUs aren't picked

@@ -49,11 +49,15 @@ flags.DEFINE_string("saved_pretrained_model_path","",
                     "If \"pretrained_model\" flag is provided, equals WRITE_ROOT/output/my_model/<pretrained_model>/best.th")
 flags.DEFINE_string("cache_dir",Path(READ_ONLY_ROOT,"cache").as_posix(),"Directory to store a cache of 🤗 transformers tokenizer ")
 flags.DEFINE_string("description","","Informal description of a run, will be stored in description.txt in the run_name folder")
+flags.DEFINE_integer("SG_max_data_size",-1,"If negative, the full data is used for each task. "
+                                        "If positive, this is the maximum index up to which samples are considered per epoch "
+                                        "during SG finetuning, validating and evaluating")
+
 
 # Trainer flags
 flags.DEFINE_integer("patience", 10, "Number of epochs the validation metric can worsen before stopping training.")
 flags.DEFINE_integer("num_epochs", 6000, "Number of epochs to train for.")
-flags.DEFINE_float("learning_rate", 10e-6, "Learning rate")
+flags.DEFINE_float("learning_rate", 10e-8, "Learning rate")
 
 #Flags determining denoising objective
 flags.DEFINE_string("objective", "simple_mlm",
@@ -83,7 +87,7 @@ flags.DEFINE_integer("top_down_distance",2,"For internal prediction: number of l
 
 
 # Distributed training stuff
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(8000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(11000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")
@@ -105,7 +109,7 @@ def process_flags():
     assert not (FLAGS.pretrained_model and FLAGS.saved_pretrained_model_path), \
         "You should specify only one of \"saved_pretrained_model_path\" and \"saved_pretrained_model_path\""
     if FLAGS.pretrained_model:
-        FLAGS.saved_pretrained_model_path = Path(WRITE_ROOT,"output","my_model",FLAGS.pretrained_model,"best.th").as_posix()
+        FLAGS.saved_pretrained_model_path = Path(WRITE_ROOT,"output","pretraining",FLAGS.pretrained_model,"best.th").as_posix()
 
 from objectives import *
 

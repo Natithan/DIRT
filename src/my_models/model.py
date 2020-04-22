@@ -31,21 +31,21 @@ class DIRTLMHead(Model):
         self.shared_encoder_block = EncoderBlock(finetune_stage)
         if FLAGS.DIR == 'combo':
             self.combiner = nn.Linear(3*FLAGS.d_hidden,FLAGS.d_hidden)
-        self.shared_top_down_predictor = nn.Sequential(
-            nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
-            get_activation(),
-            nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
-        )
-        self.shared_from_left_predictor = nn.Sequential(
-            nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
-            get_activation(),
-            nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
-        )
-        self.shared_from_right_predictor = nn.Sequential(
-            nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
-            get_activation(),
-            nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
-        )
+            self.shared_top_down_predictor = nn.Sequential(
+                nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+                get_activation(),
+                nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
+            )
+            self.shared_from_left_predictor = nn.Sequential(
+                nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+                get_activation(),
+                nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
+            )
+            self.shared_from_right_predictor = nn.Sequential(
+                nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+                get_activation(),
+                nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
+            )
         self.lm_head = LMHead()
         self.metrics_dict = {}
         self.finetune_stage = finetune_stage
@@ -98,7 +98,10 @@ class DIRTLMHead(Model):
 
         # ENCODING
         clean = (FLAGS.DIR != 'combo') or self.finetune_stage
-        encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],
+        if clean:
+            encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],clean=clean)
+        else:
+            encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],
                                top_down=self.shared_top_down_predictor,
                                from_left=self.shared_from_left_predictor,
                                from_right=self.shared_from_right_predictor,
@@ -106,7 +109,11 @@ class DIRTLMHead(Model):
                                clean=clean)
         embedded_inputs = self.embedder(input_ids,token_type_ids)
         encoded, _, cum_layer_loss = encoder(self.dropout(embedded_inputs), padding_mask)
-        cum_layer_loss = cum_layer_loss / FLAGS.nb_encoder_layers  # Normalize layer loss by number of times it is calculated
+        if FLAGS.DIR == 'combo':
+            normalizer = FLAGS.nb_encoder_layers - FLAGS.top_down_distance
+        else:
+            normalizer = FLAGS.nb_encoder_layers
+        cum_layer_loss = cum_layer_loss / normalizer  # Normalize layer loss by number of times it is calculated
         result_dict = {}
         result_dict['encoded_activations'] = encoded
 
@@ -252,8 +259,10 @@ class MySequential(nn.Sequential): #TODO move this to a for loop in enclosing mo
                                                               dim=-1))
                 # The first and last sequence elements don't have proper left resp. right inputs.
                 # Don't consider these in calculating the loss TODO if use prediction at inference: watch out with using these positions
-                DIRT_mask[0] = True
-                DIRT_mask[-1] = True
+                edge_mask = torch.zeros_like(DIRT_mask)
+                edge_mask[0] = True
+                edge_mask[-1] = True
+                DIRT_mask = DIRT_mask | edge_mask
                 layer_loss = contrastive_L2_loss(in_activations, combined_prediction, DIRT_mask)
                 cum_layer_loss += layer_loss
 
@@ -262,7 +271,7 @@ class MySequential(nn.Sequential): #TODO move this to a for loop in enclosing mo
             else:
                 inputs = module(inputs)
         if (not self.clean) and FLAGS.DIR == 'combo':
-            inputs[-1] = cum_layer_loss
+            inputs = inputs[:2] +(cum_layer_loss,)
         return inputs
 
 

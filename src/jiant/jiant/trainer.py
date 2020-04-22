@@ -24,6 +24,7 @@ from tensorboardX import SummaryWriter  # pylint: disable=import-error
 from torch.nn.utils.clip_grad import clip_grad_norm_
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+from config import FLAGS
 from jiant.tasks.seq2seq import Seq2SeqTask
 from jiant.utils import config
 from jiant.utils.utils import (
@@ -333,9 +334,14 @@ class SamplingMultiTaskTrainer:
                 biggest_batch_first=True,
             )
             task_info["iterator"] = iterator
-            task_info["tr_generator"] = iterator(task.train_data, num_epochs=None)
+            if FLAGS.SG_max_data_size >= 0:
+                task_info["tr_generator"] = iterator(list(itertools.islice(task.train_data,FLAGS.SG_max_data_size)), num_epochs=None)
+                n_training_examples = min(task.n_train_examples,FLAGS.SG_max_data_size)
 
-            n_training_examples = task.n_train_examples
+            else:
+                task_info["tr_generator"] = iterator(task.train_data, num_epochs=None)
+
+                n_training_examples = task.n_train_examples
             if phase == "pretrain":
                 # Warning: This won't be precise when training_data_fraction is set, since each
                 #  example is included or excluded independently using a hashing function.

@@ -538,7 +538,7 @@ def load_model_for_target_train_run(args, ckpt_path, model, strict, task, cuda_d
 
 def main(cl_arguments):
     """ Train a model for multitask-training."""
-    cl_args = handle_arguments(cl_arguments) #TODO figure out way to let parser and absl FLAGS play together
+    cl_args = handle_arguments(cl_arguments)
     args = config.params_from_file(cl_args.config_file, cl_args.overrides)
     # Check for deprecated arg names
     check_arg_name(args)
@@ -613,6 +613,7 @@ def main(cl_arguments):
             # Skip tasks that should not be trained on.
             if task.eval_only_task:
                 continue
+
 
             params_to_train = load_model_for_target_train_run(
                 args, pre_target_train_path, model, strict, task, cuda_device

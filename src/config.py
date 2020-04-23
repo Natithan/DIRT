@@ -41,7 +41,7 @@ flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
 flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings.")
 flags.DEFINE_integer("num_serialized_models_to_keep", 1, "Number of serialized trained models to store.")
 flags.DEFINE_bool("use_pretrained_weights", False, "Whether to initialize the model with hf pretrained weights.")
-flags.DEFINE_string("hf_model_handle","albert-xlarge-v1","Name of the huggingface model handle to use for both tokenizer "
+flags.DEFINE_string("hf_model_handle","albert-base-v1","Name of the huggingface model handle to use for both tokenizer "
                                                          "and pretrained weights (if those are loaded") #v2 seems to be faulty: https://github.com/huggingface/transformers/pull/1683#issuecomment-556001607
 flags.DEFINE_bool("fresh_data",False,"If True, don't use a pickled version of the data input if that existed")
 flags.DEFINE_string("saved_pretrained_model_path","",

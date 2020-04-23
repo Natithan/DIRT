@@ -91,9 +91,13 @@ def get_data_dict():
                                           Path(blob_dir_path,f'test_tensor{maybe_mini}').as_posix())
     val_dataset = GutenbergSplitDataset(Path(FLAGS.data_folder, 'val').as_posix(),
                                           Path(blob_dir_path,f'val_tensor{maybe_mini}').as_posix())
-    # vocab = Vocabulary.from_instances(train_dataset + val_dataset,
-    #                                   max_vocab_size=get_tokenizer().vocab_size)
-    # add_custom_tokens(vocab)
+
+    # To reduce validation time, don't even care about test at this moment :P
+    k = 1000
+    perm = torch.randperm(val_dataset.data.size(0))
+    idx = perm[:k]
+    samples = val_dataset.data[idx]
+    val_dataset.data = samples
     return {"train": train_dataset,
             "test": test_dataset,
             "val": val_dataset}

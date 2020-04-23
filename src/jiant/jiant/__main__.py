@@ -8,6 +8,8 @@ To debug this, run with -m ipdb:
 import logging as log
 from typing import Iterable
 
+from pathlib2 import Path
+
 from config import FLAGS
 from constants import SMALL_SHARED_SERVER_DIR
 
@@ -549,9 +551,15 @@ def main(cl_arguments):
     """ Train a model for multitask-training."""
     cl_args = handle_arguments(cl_arguments)
     args = config.params_from_file(cl_args.config_file, cl_args.overrides)
+
+
     # Check for deprecated arg names
     check_arg_name(args)
     args, seed = initial_setup(args, cl_args)
+    #Store the run description, if any
+    if FLAGS.description:
+        with open(Path(args.run_dir,'description.txt'),'w') as f:
+            f.write(FLAGS.description)
     # Load tasks
     log.info("Loading tasks...")
     start_time = time.time()

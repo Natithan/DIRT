@@ -121,7 +121,9 @@ RUNS[current_run_name] = [
 
 
 server = libtmux.Server()
-session = server.list_sessions()[0]
+for s in server.list_sessions():
+    if s['session_name'] != "tb":
+        session = s
 for run_name, commands in RUNS.items():
     if MINI_CHECK:
         run_name += "_mini"

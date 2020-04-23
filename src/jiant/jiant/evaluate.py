@@ -1,4 +1,5 @@
 """ Helper functions to evaluate a model on a dataset """
+import itertools
 import json
 import logging as log
 import os
@@ -11,6 +12,8 @@ import pandas as pd
 import torch
 from allennlp.nn.util import move_to_device
 from allennlp.data.iterators import BasicIterator
+
+from config import FLAGS
 from jiant import tasks as tasks_module
 from jiant.tasks.tasks import (
     BooleanQuestionTask,
@@ -96,7 +99,10 @@ def evaluate(
         task_preds = []  # accumulate DataFrames
         assert split in ["train", "val", "test"]
         dataset = getattr(task, "%s_data" % split)
-        generator = iterator(dataset, num_epochs=1, shuffle=False)
+        if FLAGS.SG_max_data_size >= 0:
+            generator = iterator(list(itertools.islice(dataset,FLAGS.SG_max_data_size)), num_epochs=1, shuffle=False)
+        else:
+            generator = iterator(dataset, num_epochs=1, shuffle=False)
         for batch_idx, batch in enumerate(generator):
             with torch.no_grad():
                 if isinstance(cuda_device, int):

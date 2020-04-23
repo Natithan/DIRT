@@ -325,10 +325,10 @@ def build_indexers(args):
             f"CoVe model expects Moses tokenization (MosesTokenizer);"
             " you are using args.tokenizer = {args.tokenizer}"
         )
-    if args.input_module == 'dirt':
-        tokenizer_name = input_module_tokenizer_name(args.input_module)
-        indexers[tokenizer_name] = DIRTIndexerWrapper(tokenizer_name)
-        # indexers[tokenizer_name] = SingleIdTokenIndexer(tokenizer_name)
+    # if args.input_module == 'dirt':
+    #     tokenizer_name = input_module_tokenizer_name(args.input_module)
+    #     indexers[tokenizer_name] = DIRTIndexerWrapper(tokenizer_name)
+    #     # indexers[tokenizer_name] = SingleIdTokenIndexer(tokenizer_name)
     elif input_module_uses_transformers(args.input_module):
         assert (
             not indexers

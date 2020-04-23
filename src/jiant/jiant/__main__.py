@@ -9,6 +9,7 @@ import logging as log
 from typing import Iterable
 
 from config import FLAGS
+from constants import SMALL_SHARED_SERVER_DIR
 
 log.basicConfig(
     format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
@@ -25,7 +26,7 @@ import time
 import copy
 import torch
 import torch.nn as nn
-
+import pandas as pd
 from jiant import evaluate
 from jiant.models import build_model
 from jiant.preprocess import build_tasks
@@ -341,6 +342,14 @@ def evaluate_and_write(args, model, tasks, splits_to_write, cuda_device):
     log.info("Writing results for split 'val' to %s", results_tsv)
     evaluate.write_results(val_results, results_tsv, run_name=run_name)
 
+    # For logging results of all tasks at once
+
+    # eg micro and macro average don't already have task identifier in key
+    tasks_id_prefix = "_".join([t.name for t in tasks]) + "_"
+    current_tasks_val_results = dict((tasks_id_prefix + k,[v]) if (not tasks_id_prefix in k) else (k, [v]) for k,v in val_results.items() )
+
+    return current_tasks_val_results
+
 
 def initial_setup(args: config.Params, cl_args: argparse.Namespace) -> (config.Params, int):
     """Perform setup steps:
@@ -645,6 +654,7 @@ def main(cl_arguments):
         log.info("Evaluating...")
         splits_to_write = evaluate.parse_write_preds_arg(args.write_preds)
 
+        results_dict = {'run_name': [args.run_name]}
         # Evaluate on target_tasks.
         for task in target_tasks:
             # Find the task-specific best checkpoint to evaluate on.
@@ -653,8 +663,16 @@ def main(cl_arguments):
             ckpt_path = get_best_checkpoint_path(args, "eval", task_to_use)
             assert ckpt_path is not None
             load_model_state(model, ckpt_path, cuda_device, skip_task_models=[], strict=strict)
-            evaluate_and_write(args, model, [task], splits_to_write, cuda_device)
+            current_tasks_val_results = evaluate_and_write(args, model, [task], splits_to_write, cuda_device)
+            results_dict = {**results_dict, **current_tasks_val_results}
 
+        tabular_results_csv = os.path.join(SMALL_SHARED_SERVER_DIR, "tabular_results.csv")
+
+        df = pd.DataFrame.from_dict(
+            results_dict)  # TODO make sure df has columns for outputs of all tasks (or is able to read existing columns and add as necessary
+        with open(tabular_results_csv, 'a') as f:
+            log.info((f"Appending results to {tabular_results_csv}."))
+            df.to_csv(f, header=f.tell() == 0,index=False)
     if args.delete_checkpoints_when_done and not args.keep_all_checkpoints:
         log.info("Deleting all checkpoints.")
         delete_all_checkpoints(args.run_dir)

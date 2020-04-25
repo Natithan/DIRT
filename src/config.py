@@ -81,7 +81,7 @@ flags.DEFINE_string("activation","gelu","Type of nonlinearity to use.")
 flags.DEFINE_string("pos_embeddings","absolute","Type of positional encoding to use.")
 flags.DEFINE_float("layernorm_eps",10e-12,"Epsilon to use for Layernorm. Different than default to be in sync with HF Albert")
 flags.DEFINE_integer("top_down_distance",2,"For internal prediction: number of layers to feed masked internal activations through before using result to predict masked activation")
-
+flags.DEFINE_string("config","","If given, overrides any default flags with values specified in the given YAML config.")
 
 
 
@@ -110,6 +110,7 @@ def process_flags():
         "You should specify only one of \"saved_pretrained_model_path\" and \"saved_pretrained_model_path\""
     if FLAGS.pretrained_model:
         FLAGS.saved_pretrained_model_path = Path(WRITE_ROOT,"output","pretraining",FLAGS.pretrained_model,"best.th").as_posix()
+    # if FLAGS.config:
 
 from objectives import *
 

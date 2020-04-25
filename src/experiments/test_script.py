@@ -5,34 +5,37 @@ from config import FLAGS
 
 MINI_CHECK = False
 RUNS = {}
-current_run_name = "HFRoberta_HFpre_nomypre_2"
-current_description = "Re-running the roberta baseline to (hopefully) have the results be stored in my results sheet, " \
-                      "including the total average score on validation data. " \
-                      "That average can then be compared to leaderboard. (this is pure roberta directly training on target SG tasks)"
-RUNS[current_run_name] = [
-        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --max_GPUs=1 '
-        f' --description="{current_description}"'
-        f' --overrides "'
-        f' run_name={current_run_name},'
-        f' input_module=roberta-base'
-        f'"; cd ..'
-    ]
 
-current_run_name = "HFAlbert_HFpre_nomypre_2"
-current_description = "Re-running the albert baseline (in it's small version that I use) " \
-                      "to (hopefully) have the results be stored in my results sheet, including the total average score." \
-                      "That average can then be compared to roberta baseline"
 
-RUNS[current_run_name] = [
-        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --max_GPUs=1 '
-        f' --description="{current_description}"'
-        f' --overrides "'
-        f' run_name={current_run_name},'
-        f' input_module={FLAGS.hf_model_handle}'
-        f'"; cd ..'
-    ]
+#
+# current_run_name = "HFRoberta_HFpre_nomypre_2"
+# current_description = "Re-running the roberta baseline to (hopefully) have the results be stored in my results sheet, " \
+#                       "including the total average score on validation data. " \
+#                       "That average can then be compared to leaderboard. (this is pure roberta directly training on target SG tasks)"
+# RUNS[current_run_name] = [
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --max_GPUs=1 '
+#         f' --description="{current_description}"'
+#         f' --overrides "'
+#         f' run_name={current_run_name},'
+#         f' input_module=roberta-base'
+#         f'"; cd ..'
+#     ]
+
+# current_run_name = "HFAlbert_HFpre_nomypre_2"
+# current_description = "Re-running the albert baseline (in it's small version that I use) " \
+#                       "to (hopefully) have the results be stored in my results sheet, including the total average score." \
+#                       "That average can then be compared to roberta baseline"
+#
+# RUNS[current_run_name] = [
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --max_GPUs=1 '
+#         f' --description="{current_description}"'
+#         f' --overrides "'
+#         f' run_name={current_run_name},'
+#         f' input_module={FLAGS.hf_model_handle}'
+#         f'"; cd ..'
+#     ]
 
 
 # current_run_name = "baseline_HFpre_nomypre_2"
@@ -90,30 +93,38 @@ RUNS[current_run_name] = [
 #         f'--overrides "run_name={current_run_name},input_module={FLAGS.hf_model_handle}"; cd ..'
 #     ]
 
-current_run_name = "combo_noHFpre_mypre"
+current_run_name = "combo_noHFpre_mypre_2"
+current_description = "Re-running my combo DIRT alt, this time with hopefully no fail on first validation during pretrainging," \
+                      "and a slightly bigger initial learning rate again"
 RUNS[current_run_name] = [
-        f"python pretrain.py --max_GPUs=1 --d_batch=3"
+        f"python pretrain.py --max_GPUs=1 --d_batch=3 --patience=1"
         f" --run_name={current_run_name}"
+        f' --description="{current_description}"'
         f" --DIR=combo"
         f" --d_hidden=768"
+        f" --learning_rate=10e-6"
         f" --d_ff=3072"
         f" --d_top_down=3072"
         f" --nb_heads=12"
-        f" --nb_encoder_layers=12"
+        f" --nb_encoder_layers=12",
         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
         f'--pretrained_model={current_run_name} --max_GPUs=1 '
         f'--overrides "run_name={current_run_name},input_module=dirt"; cd ..'
     ]
 
 current_run_name = "vanilla_noHFpre_mypre"
+current_description = "Re-running my from scratch vanilla to form baseline for combo DIRT alt. Also with again slightly " \
+                      "bigger initial learning rate, and small-albert shape."
 RUNS[current_run_name] = [
-        f"python pretrain.py --max_GPUs=1 --d_batch=3"
+        f"python pretrain.py --max_GPUs=1 --d_batch=3 --patience=1"
         f" --run_name={current_run_name}"
+        f' --description="{current_description}"'
         f" --d_hidden=768"
+        f" --learning_rate=10e-6"
         f" --d_ff=3072"
         f" --d_top_down=3072"
         f" --nb_heads=12"
-        f" --nb_encoder_layers=12"
+        f" --nb_encoder_layers=12",
         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
         f'--pretrained_model={current_run_name} --max_GPUs=1 '
         f'--overrides "run_name={current_run_name},input_module=dirt"; cd ..'

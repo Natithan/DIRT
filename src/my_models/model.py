@@ -82,7 +82,9 @@ class DIRTLMHead(Model):
             'lm_head.bias']
         allowed_from_scratch_params = [
             'relative_attention_bias',
-            'top_down_regressor'
+            'top_down_regressor',
+            'combiner','shared_top_down_predictor','shared_from_left_predictor','shared_from_right_predictor'
+
         ]
         for m in missing:
             if not any([s in m for s in allowed_from_scratch_params]):

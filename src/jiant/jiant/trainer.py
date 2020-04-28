@@ -335,6 +335,7 @@ class SamplingMultiTaskTrainer:
             )
             task_info["iterator"] = iterator
             if FLAGS.SG_max_data_size >= 0:
+                log.info(f"FLAGS.SG_max_data_size set, training on subset of data: maximum {FLAGS.SG_max_data_size} instances")
                 task_info["tr_generator"] = iterator(list(itertools.islice(task.train_data,FLAGS.SG_max_data_size)), num_epochs=None)
                 n_training_examples = min(task.n_train_examples,FLAGS.SG_max_data_size)
 

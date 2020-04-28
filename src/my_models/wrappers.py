@@ -41,7 +41,7 @@ class MLMModelWrapper(Model):
 
 class AlbertMLMWrapper(Model): #TODO change this to be AlbertWrapper
     '''
-    Wrapper class for huggingface's RobertaForMaskedLM to allow passing it to the AllenNLP trainer
+    Wrapper class for huggingface's AlbertForMaskedLM to allow passing it to the AllenNLP trainer
     '''
 
     def __init__(self, dummy_vocab,finetune_stage=False): #TODO if ever reuse this: adapt to finetune stage
@@ -50,13 +50,13 @@ class AlbertMLMWrapper(Model): #TODO change this to be AlbertWrapper
         model_class = AlbertForMaskedLM
         config_name = FLAGS.hf_model_handle
         if FLAGS.use_pretrained_weights:
-            self.model = model_class.from_pretrained(config_name)
+            self.model = model_class.from_pretrained(config_name,output_hidden_states=True)
         else:
             config = model_class.config_class.from_pretrained(
-                config_name)
+                config_name,output_hidden_states=True)
             self.model = model_class(config)
 
-    def forward(self, masked_lm_labels, input_ids, padding_mask,token_type_ids):
+    def forward(self,input_ids, padding_mask, masked_lm_labels=None, token_type_ids=None):
         tuple_result = self.model(input_ids=input_ids, masked_lm_labels=masked_lm_labels, attention_mask=padding_mask,token_type_ids=token_type_ids)
         result_dict = {}
         if masked_lm_labels is not None:
@@ -66,6 +66,8 @@ class AlbertMLMWrapper(Model): #TODO change this to be AlbertWrapper
             result_dict['vocab_scores'] = tuple_result[1]
         else:
             result_dict['vocab_scores'] = tuple_result[0]
+        all_hidden_outputs = tuple_result[-1]
+        result_dict['encoded_activations'] = all_hidden_outputs[-1] #TODO this is incorrect: AlbertForMaskedMLM doesn't give access to last-layer hidden states, and I need those for SG
         return result_dict
 
     def get_metrics(self, **kwargs):

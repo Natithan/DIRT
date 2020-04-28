@@ -16,7 +16,7 @@ from config import FLAGS, process_flags
 from text_input_pipeline import get_data_dict
 from allennlp.training import Checkpointer
 
-from trainer import MyTrainer
+from my_trainer import MyTrainer, MyCheckpointer
 from my_utils.util import cleanup, setup
 
 
@@ -70,7 +70,7 @@ def train(rank,world_size,model, run_dir, train_dataset, val_dataset):
     optimizer = optim.Adam(model.parameters(), lr=FLAGS.learning_rate)
     loader = get_loader(train_dataset, distributed)
     val_loader = get_loader(val_dataset, distributed)
-    checkpointer = Checkpointer(serialization_dir=run_dir,
+    checkpointer = MyCheckpointer(serialization_dir=run_dir,
                                 num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep)
     trainer = MyTrainer(model=model,
                                      optimizer=optimizer,

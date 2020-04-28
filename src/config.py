@@ -57,7 +57,7 @@ flags.DEFINE_integer("SG_max_data_size",-1,"If negative, the full data is used f
 
 # Trainer flags
 flags.DEFINE_integer("patience", 10, "Number of epochs the validation metric can worsen before stopping training.")
-flags.DEFINE_integer("num_epochs", 100, "Number of epochs to train for.")
+flags.DEFINE_integer("num_epochs", 5, "Number of epochs to train for.") # Default low because biggg epochs. Also keeping every epoch for this reason
 flags.DEFINE_float("learning_rate", 10e-8, "Learning rate")
 flags.DEFINE_integer("nb_subepochs", 100, "Number of points at which to do the logging and validating that the default"
                                       "allenNLP trainer only does at the end of every epoch."
@@ -91,7 +91,7 @@ flags.DEFINE_string("config","","If given, overrides any default flags with valu
 
 
 # Distributed training stuff
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(10000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(6000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")

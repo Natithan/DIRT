@@ -1,7 +1,11 @@
 # %% Imports
 from __future__ import unicode_literals, print_function
 import os
+
+import torch
 import torch.multiprocessing as mp
+from allennlp.common import Tqdm
+from allennlp.nn.util import move_to_device
 
 from torch.utils.data import DataLoader, DistributedSampler
 
@@ -54,8 +58,29 @@ def main(_):
                                                        ('train', 'test', 'val'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model])
     distributed_wrapper(train,model, run_dir, train_dataset, val_dataset)
+    model.cuda(FLAGS.device_idxs[0])
 
-    model(test_dataset)
+    print("Evaluating pretraining performance on test split")
+    test_loader = get_loader(test_dataset, distributed=False)
+    model.eval()
+    batch_generator = iter(test_loader)
+    batch_generator = Tqdm.tqdm(
+        batch_generator)
+    total_metrics = {}
+    with torch.no_grad():
+        for i, batch in enumerate(batch_generator):
+            batch = move_to_device(batch, FLAGS.device_idxs[0])
+            if isinstance(batch, torch.Tensor):
+                model(batch)
+            else:
+                model(**batch)
+            if i == 0:
+                total_metrics = model.get_metrics()
+            else:
+                total_metrics = {m: total_metrics[m] + model.get_metrics()[m] for m in total_metrics.keys()}
+        average_metrics = {k: v/(i+1) for k,v in total_metrics.items()}
+        print(f"Average test metrics:{average_metrics}")
+
 
 
 def train(rank,world_size,model, run_dir, train_dataset, val_dataset):

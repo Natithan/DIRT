@@ -1,7 +1,0 @@
----
-d_hidden: 768
-d_ff: 3072
-d_top_down: 3072
-nb_heads: 12
-nb_encoder_layers: 12
----

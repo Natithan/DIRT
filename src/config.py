@@ -85,13 +85,12 @@ flags.DEFINE_string("activation","gelu","Type of nonlinearity to use.")
 flags.DEFINE_string("pos_embeddings","absolute","Type of positional encoding to use.")
 flags.DEFINE_float("layernorm_eps",10e-12,"Epsilon to use for Layernorm. Different than default to be in sync with HF Albert")
 flags.DEFINE_integer("top_down_distance",2,"For internal prediction: number of layers to feed masked internal activations through before using result to predict masked activation")
-flags.DEFINE_string("config","","If given, overrides any default flags with values specified in the given YAML config.")
 
 
 
 
 # Distributed training stuff
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(6000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(10000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")
@@ -100,6 +99,9 @@ flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned b
 flags.DEFINE_string("config_file","", "Location of the file that contains the flow-control-config")
 flags.DEFINE_string("pretrained_model","","Name of the run whose best checkpoint will be used as pretrained model."
                                        " Ignored if saved_pretrained_model_path is provided.")
+
+flags.DEFINE_string("pretrained_model_checkpoint","best","Which checkpoint in the training history of a particular pretrained_model to pick"
+                                                     "Defaults to 'best'.")
 flags.DEFINE_bool("reload_indexing",False,"If True, redo the indexing that happens in jiant")
 flags.DEFINE_string("overrides","", "String that indicates which parameters from the config_file to override with what")
 
@@ -113,7 +115,8 @@ def process_flags():
     assert not (FLAGS.pretrained_model and FLAGS.saved_pretrained_model_path), \
         "You should specify only one of \"saved_pretrained_model_path\" and \"saved_pretrained_model_path\""
     if FLAGS.pretrained_model:
-        FLAGS.saved_pretrained_model_path = Path(WRITE_ROOT,"output","pretraining",FLAGS.pretrained_model,"best.th").as_posix()
+        checkpoint = f'{FLAGS.pretrained_model_checkpoint}.th'
+        FLAGS.saved_pretrained_model_path = Path(WRITE_ROOT,"output","pretraining",FLAGS.pretrained_model,checkpoint).as_posix()
     # if FLAGS.config:
 
 from objectives import *

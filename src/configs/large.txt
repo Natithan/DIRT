@@ -1,0 +1,5 @@
+--d_hidden=1024
+--d_ff=4096
+--d_top_down=4096
+--nb_heads=16
+--nb_encoder_layers=24

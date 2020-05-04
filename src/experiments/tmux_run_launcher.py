@@ -312,72 +312,188 @@ RUNS = {}
 #         f' --pretrained_model_checkpoint={pretrained_model_checkpoint}'
 #         f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
 #     ]
-current_server = 'bilbo'
-current_run_name = "combo_HFpre_mypre"
-current_description = "- See if pretrained weights help in doing self-regression    \r\n" \
-                      "- See if doing extra training with DIRT objective on top of pretrained weights improves (any aspect of) GLUE performance"
+# current_server = 'bilbo'
+# current_run_name = "combo_HFpre_mypre"
+# current_description = "- See if pretrained weights help in doing self-regression    \r\n" \
+#                       "- See if doing extra training with DIRT objective on top of pretrained weights improves (any aspect of) GLUE performance"
+# RUNS[current_run_name] = [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=3 --patience=1"
+#         f" --run_name={current_run_name}"
+#         f' --description="{current_description}"'
+#         f' --use_pretrained_weights'
+#         f" --DIR=combo"
+#         f" --flagfile=configs/base.txt",
+#
+#
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#         f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
+#     ]
+
+# current_run_name = "combo_fraction_.5"
+# current_description = "Check effect of relative importance of DIRT loss in pretraining task vs default .95"
+# current_server = 'bilbo'
+#
+# RUNS[current_run_name] = [
+#     f"ssh {current_server}",
+#
+#     f"python pretrain.py --max_GPUs=1 --d_batch=3 --patience=1"
+#     f" --run_name={current_run_name}"
+#     f' --description="{current_description}"'
+#     f" --DIR=combo"
+#     f" --flagfile=configs/base.txt"
+#     f" --DIR_loss_fraction=0.5",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#     f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
+#     ]
+
+# current_run_name = "combo_fraction_.1"
+# current_description = "Check effect of relative importance of DIRT loss in pretraining task vs default .95"
+# current_server = 'bilbo'
+#
+# RUNS[current_run_name] = [
+#     f"ssh {current_server}",
+#
+#     f"python pretrain.py --max_GPUs=1 --d_batch=3 --patience=1"
+#     f" --run_name={current_run_name}"
+#     f' --description="{current_description}"'
+#     f" --DIR=combo"
+#     f" --flagfile=configs/base.txt"
+#     f" --DIR_loss_fraction=0.5",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#     f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
+#     ]
+
+#
+# current_run_name = "HFRoberta_bigMNLI_HFpre_nomypre"
+# current_description = "Running big roberta variant with mnli extra training, to see effect on SG score of size"
+# current_server = 'bilbo'
+#
+# RUNS[current_run_name] = [
+#     f"ssh {current_server}",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f'--max_GPUs=1 '
+#     f' --overrides "run_name={current_run_name},input_module=roberta-large-mnli"; cd ..'
+#     ]
+
+# current_run_name = "HFRoberta_big_HFpre_nomypre_2"
+# current_description = "Running big roberta variant to see effect on SG score of size. This time correct (instead of actually mnli version also)"
+# current_server = 'frodo'
+#
+# RUNS[current_run_name] = [
+#     f"ssh {current_server}",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f'--max_GPUs=1 '
+#     f' --overrides "run_name={current_run_name},input_module=roberta-large"; cd ..'
+#     ]
+#
+# current_run_name = "HFAlbert_big_HFpre_nomypre"
+# current_description = "Running big albert variant to see effect on SG score of size"
+# current_server = 'frodo'
+#
+# RUNS[current_run_name] = [
+#     f"ssh {current_server}",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f'--max_GPUs=1 '
+#     f' --overrides "run_name={current_run_name},input_module=albert-xxlarge-v2"; cd ..'
+#     ]
+
+current_server = 'arwen'
+current_run_name = "HFAlbert_xl_HFpre_mypre_lr_10emin8_2"
+current_description = "After fixing my baseline to be equal to HF in dropouts also, this checks whether my " \
+                      "baseline can indeed can match HFAlbert with both HFpretrain and my_pretrain." \
+                      "This time pretraining with 5 epochs patience, for max 5 epochs."
+hf_model_handle='albert-xlarge-v1'
 RUNS[current_run_name] = [
         f"ssh {current_server}",
 
-        f"python pretrain.py --max_GPUs=1 --d_batch=3 --patience=1"
+        f"python pretrain.py --max_GPUs=1 --d_batch=2 --patience=1"
         f" --run_name={current_run_name}"
         f' --description="{current_description}"'
+        f' --model=hf_baseline'
+        f" --flagfile=configs/xlarge.txt"
         f' --use_pretrained_weights'
-        f" --DIR=combo"
-        f" --flagfile=configs/base.txt",
+        f' --hf_model_handle={hf_model_handle}'
+        f' --learning_rate=0.0000001',
 
 
         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --pretrained_model={current_run_name} --max_GPUs=1 '
-        f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
+        f' --max_GPUs=1 '
+        f' --description="{current_description}"'
+        f' --pretrained_model={current_run_name}'
+        f' --overrides "'
+        f' run_name={current_run_name},'
+        f' input_module=dirt'
+        f'"; cd ..'
     ]
 
 current_server = 'bilbo'
-current_run_name = "combo_HFpre_mypre"
-current_description = "- See if pretrained weights help in doing self-regression    \r\n" \
-                      "- See if doing extra training with DIRT objective on top of pretrained weights improves (any aspect of) GLUE performance"
+current_run_name = "baseline_xl_HFpre_mypre_lr_10emin8_2"
+current_description = "After fixing my baseline to be equal to HF in dropouts also, this checks whether my baseline can" \
+                      " indeed match HFAlbert with both HFpretrain and my_pretrain. " \
+                      "This time pretraining with 5 epochs patience, for max 5 epochs."
+hf_model_handle='albert-xlarge-v1'
 RUNS[current_run_name] = [
         f"ssh {current_server}",
 
-        f"python pretrain.py --max_GPUs=1 --d_batch=3 --patience=1"
+        f"python pretrain.py --max_GPUs=1 --d_batch=2 "
+        f" --patience=5"
         f" --run_name={current_run_name}"
         f' --description="{current_description}"'
+        f" --flagfile=configs/xlarge.txt"
         f' --use_pretrained_weights'
-        f" --DIR=combo"
-        f" --flagfile=configs/base.txt",
+        f' --hf_model_handle={hf_model_handle}'
+        f' --learning_rate=0.0000001',
 
 
         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --pretrained_model={current_run_name} --max_GPUs=1 '
-        f' --overrides "run_name={current_run_name},input_module=dirt"; cd ..'
+        f' --max_GPUs=1 '
+        f' --description="{current_description}"'
+        f' --pretrained_model={current_run_name}'
+        f' --overrides "'
+        f' run_name={current_run_name},'
+        f' input_module=dirt'
+        f'"; cd ..'
     ]
 
-current_run_name = "combo_fraction_.5"
-current_description = "Check effect of relative importance of DIRT loss in pretraining task vs default .95"
-current_server = 'frodo'
-
+current_server = 'bilbo'
+current_run_name = "baseline_base_HFpre_mypre_lr_10emin8_2"
+current_description = "Forming baseline with HFPre, with updated dropout."
+hf_model_handle='albert-base-v1'
 RUNS[current_run_name] = [
-    f"ssh {current_server}",
-    f"python pretrain.py --max_GPUs=1 --d_batch=3 --patience=1"
+        f"ssh {current_server}",
+
+        f"python pretrain.py --max_GPUs=1 --d_batch=2 "
+        f" --patience=5"
         f" --run_name={current_run_name}"
         f' --description="{current_description}"'
-        f" --DIR=combo"
-        f" --d_hidden=768"
-        f" --learning_rate=10e-6"
-        f" --d_ff=3072"
-        f" --d_top_down=3072"
-        f" --nb_heads=12"
-        f" --nb_encoder_layers=12",
+        f" --flagfile=configs/base.txt"
+        f' --use_pretrained_weights'
+        f' --hf_model_handle={hf_model_handle}'
+        f' --learning_rate=0.0000001',
+
+
         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f'--pretrained_model={current_run_name} --max_GPUs=1 '
-        f'--overrides "run_name={current_run_name},input_module=dirt"; cd ..'
+        f' --max_GPUs=1 '
+        f' --description="{current_description}"'
+        f' --pretrained_model={current_run_name}'
+        f' --overrides "'
+        f' run_name={current_run_name},'
+        f' input_module=dirt'
+        f'"; cd ..'
     ]
 
 server = libtmux.Server()
 session = server.find_where({"session_name":"exps"})
-# for s in server.list_sessions():
-#     if s['session_name'] != "tb":
-#         session = s
 assert session is not None, "Don't forget to start a tmux session"
 
 

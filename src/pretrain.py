@@ -16,13 +16,17 @@ import torch.optim as optim
 
 from absl import app
 from config import FLAGS, process_flags
+import numpy as np
 
 from text_input_pipeline import get_data_dict
 from allennlp.training import Checkpointer
 
 from my_trainer import MyTrainer, MyCheckpointer
 from my_utils.util import cleanup, setup
-
+import logging as log
+log.basicConfig(
+    format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
+)  # noqa
 
 def get_loader(dataset, distributed):
     if distributed:
@@ -38,6 +42,9 @@ def get_loader(dataset, distributed):
 
 def main(_):
     process_flags()
+    if FLAGS.manual_seed:
+        set_manual_seeds(FLAGS.manual_seed)
+
     # Create folders and files to store results and configs
     run_dir = Path(FLAGS.output_folder, FLAGS.run_name)
     if not os.path.exists(run_dir):
@@ -60,7 +67,7 @@ def main(_):
     distributed_wrapper(train,model, run_dir, train_dataset, val_dataset)
     model.cuda(FLAGS.device_idxs[0])
 
-    print("Evaluating pretraining performance on test split")
+    log.info("Evaluating pretraining performance on test split")
     test_loader = get_loader(test_dataset, distributed=False)
     model.eval()
     batch_generator = iter(test_loader)
@@ -79,8 +86,14 @@ def main(_):
             else:
                 total_metrics = {m: total_metrics[m] + model.get_metrics()[m] for m in total_metrics.keys()}
         average_metrics = {k: v/(i+1) for k,v in total_metrics.items()}
-        print(f"Average test metrics:{average_metrics}")
+        log.info(f"Average test metrics:{average_metrics}")
 
+
+def set_manual_seeds(seed):
+    torch.manual_seed(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    np.random.seed(seed)
 
 
 def train(rank,world_size,model, run_dir, train_dataset, val_dataset):

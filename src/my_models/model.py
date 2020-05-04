@@ -19,6 +19,10 @@ from config import FLAGS, get_my_tokenizer
 from constants import TYPE_VOCAB_SIZE
 from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss, get_activation, \
     sizeof_fmt, sz
+import logging as log
+log.basicConfig(
+    format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
+)  # noqa
 
 
 class DIRTLMHead(Model):
@@ -92,6 +96,7 @@ class DIRTLMHead(Model):
         for u in unexpected:
             if not any([s in u for s in ignored_hf_parameters]):
                 raise ValueError(f'Unexpected mismatch in loading state dict: {u} in pretrained but not in current model.')
+        log.info(f"Loaded pretrained weights from {FLAGS.hf_model_handle}")
 
     def get_metrics(self, **kwargs):
         return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
@@ -110,7 +115,7 @@ class DIRTLMHead(Model):
                                combiner=self.combiner,
                                clean=clean)
         embedded_inputs = self.embedder(input_ids,token_type_ids)
-        encoded, _, cum_layer_loss = encoder(self.dropout(embedded_inputs), padding_mask)
+        encoded, _, cum_layer_loss = encoder(embedded_inputs, padding_mask)
         if FLAGS.DIR == 'combo':
             normalizer = FLAGS.nb_encoder_layers - FLAGS.top_down_distance
         else:
@@ -190,8 +195,8 @@ class FeedForwardBlock(nn.Module):
         self.dropout = MyDropout()
 
     def forward(self, hidden_in):
-        result = self.dropout(self.linear_out(self.activation(self.linear_in(hidden_in))))
-        return self.LayerNorm(result + self.dropout(hidden_in))
+        result = self.linear_out(self.activation(self.linear_in(hidden_in)))
+        return self.LayerNorm(result + hidden_in)
 
 
 class EncoderBlock(nn.Module):
@@ -386,7 +391,7 @@ class MultiHeadAttention(nn.Module):
                                            v_multi_parts)  # [d_batch*num_heads,query_length, d_head_hidden] from [d_batch*num_heads, query_length, value_length] x [d_batch*num_heads,value_length, d_head_hidden]
         att_output = att_output_multi_parts.transpose(1,2).contiguous().view(d_batch, FLAGS.d_hidden, query_length).transpose(1,2).contiguous() # Last contiguous to make sure mem calculations add up :P
         att_output = self.project_o(att_output) # Ok THIS I did better than HF :D
-        result_dict['activations'] = self.LayerNorm(att_output + self.dropout(replacees))  # Include skip-connection
+        result_dict['activations'] = self.LayerNorm(self.dropout(att_output) + replacees)  # Include skip-connection
 
         if FLAGS.DIR == 'from_projection' and (not self.finetune_stage):
             assert torch.equal(replacees, replacers), 'from_projection DIR only works with self-attention.'

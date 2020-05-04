@@ -92,8 +92,9 @@ def get_data_dict():
     val_dataset = GutenbergSplitDataset(Path(FLAGS.data_folder, 'val').as_posix(),
                                           Path(blob_dir_path,f'val_tensor{maybe_mini}').as_posix())
 
-    # To reduce validation time, don't even care about test at this moment :P
-    k = 1000
+    # To reduce validation time
+    k = 5000
+
     perm = torch.randperm(val_dataset.data.size(0))
     idx = perm[:k]
     samples = val_dataset.data[idx]

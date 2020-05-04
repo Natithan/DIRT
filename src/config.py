@@ -53,7 +53,8 @@ flags.DEFINE_string("description","","Informal description of a run, will be sto
 flags.DEFINE_integer("SG_max_data_size",-1,"If negative, the full data is used for each task. "
                                         "If positive, this is the maximum index up to which samples are considered per epoch "
                                         "during SG finetuning, validating and evaluating")
-
+flags.DEFINE_integer("manual_seed",None,"Running multiple experiments with the same manual seed should give identical performance"
+                                        " (barring some unavoidable noise, see https://pytorch.org/docs/stable/notes/randomness.html")
 
 # Trainer flags
 flags.DEFINE_integer("patience", 10, "Number of epochs the validation metric can worsen before stopping training.")
@@ -90,7 +91,7 @@ flags.DEFINE_integer("top_down_distance",2,"For internal prediction: number of l
 
 
 # Distributed training stuff
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(10000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(8000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")
@@ -111,6 +112,7 @@ flags.DEFINE_string("overrides","", "String that indicates which parameters from
 
 FLAGS(sys.argv)
 def process_flags():
+    assert (not FLAGS.manual_seed == 0), "Set a strictly positive manual seed. Zero is counted as not setting a seed."
     FLAGS.device_idxs = [int(idx) for idx in FLAGS.device_idxs][:FLAGS.max_GPUs]
     assert not (FLAGS.pretrained_model and FLAGS.saved_pretrained_model_path), \
         "You should specify only one of \"saved_pretrained_model_path\" and \"saved_pretrained_model_path\""

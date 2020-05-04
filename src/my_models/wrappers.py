@@ -22,7 +22,8 @@ class MLMModelWrapper(Model):
         new_input_dict = {}
         new_input_dict['padding_mask'] = input_ids != self.token_indexer.pad_token_id
         if (not self.finetune_stage):
-            new_input_dict['input_ids'] = self.objective(input_ids, self.token_indexer)
+            masked_ids = self.objective(input_ids, self.token_indexer)
+            new_input_dict['input_ids'] = masked_ids
         else:
             new_input_dict['input_ids'] = input_ids
         new_input_dict['masked_lm_labels'] = torch.where(

@@ -407,91 +407,126 @@ RUNS = {}
 #     f' --overrides "run_name={current_run_name},input_module=albert-xxlarge-v2"; cd ..'
 #     ]
 
-current_server = 'arwen'
-current_run_name = "HFAlbert_xl_HFpre_mypre_lr_10emin8_2"
-current_description = "After fixing my baseline to be equal to HF in dropouts also, this checks whether my " \
-                      "baseline can indeed can match HFAlbert with both HFpretrain and my_pretrain." \
-                      "This time pretraining with 5 epochs patience, for max 5 epochs."
+# current_server = 'arwen'
+# current_run_name = "HFAlbert_xl_HFpre_mypre_lr_10emin8_2"
+# current_description = "After fixing my baseline to be equal to HF in dropouts also, this checks whether my " \
+#                       "baseline can indeed can match HFAlbert with both HFpretrain and my_pretrain." \
+#                       "This time pretraining with 5 epochs patience, for max 5 epochs."
+# hf_model_handle='albert-xlarge-v1'
+# RUNS[current_run_name] = [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=2 --patience=1"
+#         f" --run_name={current_run_name}"
+#         f' --description="{current_description}"'
+#         f' --model=hf_baseline'
+#         f" --flagfile=configs/xlarge.txt"
+#         f' --use_pretrained_weights'
+#         f' --hf_model_handle={hf_model_handle}'
+#         f' --learning_rate=0.0000001',
+#
+#
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --max_GPUs=1 '
+#         f' --description="{current_description}"'
+#         f' --pretrained_model={current_run_name}'
+#         f' --overrides "'
+#         f' run_name={current_run_name},'
+#         f' input_module=dirt'
+#         f'"; cd ..'
+#     ]
+#
+# current_server = 'bilbo'
+# current_run_name = "baseline_xl_HFpre_mypre_lr_10emin8_2"
+# current_description = "After fixing my baseline to be equal to HF in dropouts also, this checks whether my baseline can" \
+#                       " indeed match HFAlbert with both HFpretrain and my_pretrain. " \
+#                       "This time pretraining with 5 epochs patience, for max 5 epochs."
+# hf_model_handle='albert-xlarge-v1'
+# RUNS[current_run_name] = [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=2 "
+#         f" --patience=5"
+#         f" --run_name={current_run_name}"
+#         f' --description="{current_description}"'
+#         f" --flagfile=configs/xlarge.txt"
+#         f' --use_pretrained_weights'
+#         f' --hf_model_handle={hf_model_handle}'
+#         f' --learning_rate=0.0000001',
+#
+#
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --max_GPUs=1 '
+#         f' --description="{current_description}"'
+#         f' --pretrained_model={current_run_name}'
+#         f' --overrides "'
+#         f' run_name={current_run_name},'
+#         f' input_module=dirt'
+#         f'"; cd ..'
+#     ]
+#
+# current_server = 'frodo'
+# current_run_name = "baseline_base_HFpre_mypre_lr_10emin8_2"
+# current_description = "Forming baseline with HFPre, with updated dropout."
+# hf_model_handle='albert-base-v1'
+# RUNS[current_run_name] = [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=2 "
+#         f" --patience=5"
+#         f" --run_name={current_run_name}"
+#         f' --description="{current_description}"'
+#         f" --flagfile=configs/base.txt"
+#         f' --use_pretrained_weights'
+#         f' --hf_model_handle={hf_model_handle}'
+#         f' --learning_rate=0.0000001'
+#         f' --device_idxs=3',
+#
+#
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --max_GPUs=1 '
+#         f' --device_idxs=3'
+#         f' --description="{current_description}"'
+#         f' --pretrained_model={current_run_name}'
+#         f' --overrides "'
+#         f' run_name={current_run_name},'
+#         f' input_module=dirt'
+#         f'"; cd ..'
+#     ]
+
+current_server = 'frodo'
+current_run_name = "HFAlbert_xl_HFpre_mypre_lr_10emin8_2_mid_epoch_check"
+current_description = "This checks SG performance with the already existing checkpoint, if this is already decent and matches baseline, I'll be satisfied "
 hf_model_handle='albert-xlarge-v1'
 RUNS[current_run_name] = [
         f"ssh {current_server}",
 
-        f"python pretrain.py --max_GPUs=1 --d_batch=2 --patience=1"
-        f" --run_name={current_run_name}"
-        f' --description="{current_description}"'
-        f' --model=hf_baseline'
-        f" --flagfile=configs/xlarge.txt"
-        f' --use_pretrained_weights'
-        f' --hf_model_handle={hf_model_handle}'
-        f' --learning_rate=0.0000001',
-
-
         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
         f' --max_GPUs=1 '
         f' --description="{current_description}"'
-        f' --pretrained_model={current_run_name}'
+        f' --saved_pretrained_model_path={Path("/cw/working-arwen/nathan/phd","output","pretraining","HFAlbert_xl_HFpre_mypre_lr_10emin8_2","model_state_epoch_0.2020-05-05-10-10-30.th").as_posix()}'
         f' --overrides "'
         f' run_name={current_run_name},'
         f' input_module=dirt'
         f'"; cd ..'
     ]
 
-current_server = 'bilbo'
-current_run_name = "baseline_xl_HFpre_mypre_lr_10emin8_2"
-current_description = "After fixing my baseline to be equal to HF in dropouts also, this checks whether my baseline can" \
-                      " indeed match HFAlbert with both HFpretrain and my_pretrain. " \
-                      "This time pretraining with 5 epochs patience, for max 5 epochs."
+current_server = 'frodo'
+current_run_name = "baseline_xl_HFpre_mypre_lr_10emin8_2_mid_epoch_check"
+current_description = "This checks SG performance with the already existing checkpoint, if this is already decent and matches HFalbert, I'll be satisfied "
 hf_model_handle='albert-xlarge-v1'
 RUNS[current_run_name] = [
         f"ssh {current_server}",
 
-        f"python pretrain.py --max_GPUs=1 --d_batch=2 "
-        f" --patience=5"
-        f" --run_name={current_run_name}"
-        f' --description="{current_description}"'
-        f" --flagfile=configs/xlarge.txt"
-        f' --use_pretrained_weights'
-        f' --hf_model_handle={hf_model_handle}'
-        f' --learning_rate=0.0000001',
-
-
         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
         f' --max_GPUs=1 '
         f' --description="{current_description}"'
-        f' --pretrained_model={current_run_name}'
+        f' --saved_pretrained_model_path={Path("/cw/working-bilbo/nathan/phd","output","pretraining","baseline_xl_HFpre_mypre_lr_10emin8_2","model_state_epoch_0.2020-05-05-10-12-30.th").as_posix()}'
         f' --overrides "'
         f' run_name={current_run_name},'
         f' input_module=dirt'
         f'"; cd ..'
     ]
-
-current_server = 'bilbo'
-current_run_name = "baseline_base_HFpre_mypre_lr_10emin8_2"
-current_description = "Forming baseline with HFPre, with updated dropout."
-hf_model_handle='albert-base-v1'
-RUNS[current_run_name] = [
-        f"ssh {current_server}",
-
-        f"python pretrain.py --max_GPUs=1 --d_batch=2 "
-        f" --patience=5"
-        f" --run_name={current_run_name}"
-        f' --description="{current_description}"'
-        f" --flagfile=configs/base.txt"
-        f' --use_pretrained_weights'
-        f' --hf_model_handle={hf_model_handle}'
-        f' --learning_rate=0.0000001',
-
-
-        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --max_GPUs=1 '
-        f' --description="{current_description}"'
-        f' --pretrained_model={current_run_name}'
-        f' --overrides "'
-        f' run_name={current_run_name},'
-        f' input_module=dirt'
-        f'"; cd ..'
-    ]
-
 server = libtmux.Server()
 session = server.find_where({"session_name":"exps"})
 assert session is not None, "Don't forget to start a tmux session"
@@ -505,9 +540,9 @@ for run_name, commands in RUNS.items():
     w = session.new_window(attach=False, window_name=run_name)
     pane = w.panes[0]
     track_run_in_sheets(run_name,commands)
+    print(f"Sending following commands to window  {w['window_name']} : {';'.join(commands)}")
     for command in commands:
         if command == f'ssh {HOSTNAME}': # Don't ssh extra to a host we're already on
             continue
-        print(f"Sending following command to window  {w['window_name']} : \n{command}")
         pane.send_keys(command)
-    time.sleep(20) # To make sure the same GPUs aren't picked
+    time.sleep(10) # To make sure the same GPUs aren't picked

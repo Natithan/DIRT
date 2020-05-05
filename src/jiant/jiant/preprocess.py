@@ -477,6 +477,8 @@ def build_tasks(
             ,indexer=indexer)
             target_tasks.append(task)
 
+
+
     log.info("\t  Training on %s", ", ".join(pretrain_task_names))
     log.info("\t  Evaluating on %s", ", ".join(target_task_names))
     return pretrain_tasks, target_tasks, vocab, word_embs

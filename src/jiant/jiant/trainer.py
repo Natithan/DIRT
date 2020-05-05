@@ -20,6 +20,7 @@ from allennlp.training.learning_rate_schedulers import (  # pylint: disable=impo
     LearningRateScheduler,
 )
 from allennlp.training.optimizers import Optimizer  # pylint: disable=import-error
+from jiant.utils.serialize import RepeatableIterator
 from tensorboardX import SummaryWriter  # pylint: disable=import-error
 from torch.nn.utils.clip_grad import clip_grad_norm_
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -34,7 +35,7 @@ from jiant.utils.utils import (
     get_model_attribute,
 )  # pylint: disable=import-error
 from allennlp.nn.util import move_to_device
-
+from my_utils.jiant_utils import MyRepeatableIterator
 
 def build_trainer_params(args, cuda_device, task_names, phase="pretrain"):
     """ Helper function which extracts trainer parameters from args.
@@ -334,15 +335,17 @@ class SamplingMultiTaskTrainer:
                 biggest_batch_first=True,
             )
             task_info["iterator"] = iterator
-            if FLAGS.SG_max_data_size >= 0:
+            nb_held_out_samples = min(task.n_train_examples // 10, self._val_data_limit)
+            log.info(f"Only training on non-held-out part of train_data (first {nb_held_out_samples} of {task.n_train_examples} samples reserved as held-out samples)")
+            if 0 <= FLAGS.SG_max_data_size < task.n_train_examples - nb_held_out_samples :
                 log.info(f"FLAGS.SG_max_data_size set, training on subset of data: maximum {FLAGS.SG_max_data_size} instances")
-                task_info["tr_generator"] = iterator(list(itertools.islice(task.train_data,FLAGS.SG_max_data_size)), num_epochs=None)
-                n_training_examples = min(task.n_train_examples,FLAGS.SG_max_data_size)
+            data_end = min(task.n_train_examples, nb_held_out_samples + FLAGS.SG_max_data_size)
+            # repeatable_iterable = MyRepeatableIterator(itertools.islice)
+            # repeatable_iterable(task.train_data, nb_held_out_samples, data_end)
+            task_info["tr_generator"] = iterator(RepeatableIterator(lambda : (yield from itertools.islice(task.train_data, nb_held_out_samples, data_end))),
+                                                 num_epochs=None)
+            n_training_examples = data_end - nb_held_out_samples
 
-            else:
-                task_info["tr_generator"] = iterator(task.train_data, num_epochs=None)
-
-                n_training_examples = task.n_train_examples
             if phase == "pretrain":
                 # Warning: This won't be precise when training_data_fraction is set, since each
                 #  example is included or excluded independently using a hashing function.
@@ -836,7 +839,12 @@ class SamplingMultiTaskTrainer:
             max_data_points = min(task.n_val_examples, self._val_data_limit)
         else:
             max_data_points = task.n_val_examples
-        val_generator = BasicIterator(batch_size, instances_per_epoch=max_data_points)(task.val_data, num_epochs=1, shuffle=False)
+        log.info("Validating on held-out part of train set ...")
+        nb_held_out_samples = task.n_train_examples // 10
+        val_generator = BasicIterator(batch_size, instances_per_epoch=max_data_points)(
+            RepeatableIterator(lambda: (yield from itertools.islice(task.train_data, nb_held_out_samples))),
+            num_epochs=1, shuffle=False)
+        # val_generator = BasicIterator(batch_size, instances_per_epoch=max_data_points)(task.val_data, num_epochs=1, shuffle=False)
         n_val_batches = math.ceil(max_data_points / batch_size)
         all_val_metrics["%s_loss" % task.name] = 0.0
 

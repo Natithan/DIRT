@@ -62,7 +62,7 @@ class AlbertMLMWrapper(Model): #TODO change this to be AlbertWrapper
         result_dict = {}
         if masked_lm_labels is not None:
             result_dict['loss'] = tuple_result[0]  # Add more parts of output when needed :P
-            self.metrics_dict['crossentropy_loss'] = result_dict['loss']
+            self.metrics_dict['crossentropy_loss'] = result_dict['loss'].item()
             self.metrics_dict['perplexity'] = torch.exp(result_dict['loss']).item()
             result_dict['vocab_scores'] = tuple_result[1]
         else:

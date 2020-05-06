@@ -99,6 +99,12 @@ def get_data_dict():
     idx = perm[:k]
     samples = val_dataset.data[idx]
     val_dataset.data = samples
+
+    #To reduce test time
+    perm = torch.randperm(test_dataset.data.size(0))
+    idx = perm[:k]
+    samples = test_dataset.data[idx]
+    test_dataset.data = samples
     return {"train": train_dataset,
             "test": test_dataset,
             "val": val_dataset}

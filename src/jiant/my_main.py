@@ -16,7 +16,7 @@ from jiant.__main__ import main as jiant_main
 
 def main(_):
     process_flags()
-    print(f'Using GPUs {FLAGS.device_idxs}')
+    log.info(f'Using GPUs {FLAGS.device_idxs}')
     os.environ["TORCH_HOME"] = f'/cw/working-arwen/nathan' #Load cache files once on arwen, then always read
     os.environ["JIANT_PROJECT_PREFIX"] = f'{WRITE_ROOT}/output'
     os.environ["JIANT_DATA_DIR"] = f'{READ_ONLY_ROOT}/data'

@@ -7,7 +7,9 @@ from allennlp.training.trainer import *
 from allennlp.training import GradientDescentTrainer
 from allennlp.nn import util as nn_util
 from config import FLAGS
+import logging as log
 
+logger = log.getLogger()
 
 class MyTrainer(GradientDescentTrainer):
     def __init__(self, *args, **kwargs):
@@ -202,8 +204,7 @@ class MyCheckpointer(Checkpointer):
 
             if is_best_so_far and not is_intra_epoch_checkpoint:
                 logger.info(
-                    "Best validation performance so far. Copying weights to '%s/best.th'.",
-                    self._serialization_dir,
+                    f"Best validation performance so far. Copying weights from epoch {str(epoch)} to '{self._serialization_dir}/best.th'."
                 )
                 shutil.copyfile(model_path, os.path.join(self._serialization_dir, "best.th"))
 

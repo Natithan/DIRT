@@ -55,7 +55,6 @@ flags.DEFINE_integer("SG_max_data_size",-1,"If negative, the full data is used f
                                         "during SG finetuning, validating and evaluating")
 flags.DEFINE_integer("manual_seed",None,"Running multiple experiments with the same manual seed should give identical performance"
                                         " (barring some unavoidable noise, see https://pytorch.org/docs/stable/notes/randomness.html")
-
 # Trainer flags
 flags.DEFINE_integer("patience", 10, "Number of epochs the validation metric can worsen before stopping training.")
 flags.DEFINE_integer("num_epochs", 5, "Number of epochs to train for.") # Default low because biggg epochs. Also keeping every epoch for this reason

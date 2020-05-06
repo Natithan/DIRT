@@ -23,6 +23,8 @@ from allennlp.training import Checkpointer
 
 from my_trainer import MyTrainer, MyCheckpointer
 from my_utils.util import cleanup, setup
+import tqdm
+
 import logging as log
 log.basicConfig(
     format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
@@ -42,6 +44,7 @@ def get_loader(dataset, distributed):
 
 def main(_):
     process_flags()
+
     if FLAGS.manual_seed:
         set_manual_seeds(FLAGS.manual_seed)
 
@@ -49,10 +52,18 @@ def main(_):
     run_dir = Path(FLAGS.output_folder, FLAGS.run_name)
     if not os.path.exists(run_dir):
         os.makedirs(run_dir)
+
+    # Logging
+    log_fh = log.FileHandler(Path(run_dir, 'log.log'))
+    log_fmt = log.Formatter("%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p")
+    log_fh.setFormatter(log_fmt)
+    log.getLogger().addHandler(log_fh)
+
     #Store the run description, if any
     if FLAGS.description:
         with open(Path(run_dir,'description.txt'),'w') as f:
             f.write(FLAGS.description)
+        log.info(f'DESCRIPTION: {FLAGS.description}')
     # Store configuration in same folder as logs and model
     flagfile = Path(run_dir, 'flagfile.txt')
     if os.path.exists(flagfile):
@@ -103,7 +114,7 @@ def train(rank,world_size,model, run_dir, train_dataset, val_dataset):
     if distributed:
         setup(rank, world_size)
     cuda_id = FLAGS.device_idxs[rank]
-    print(f"Using GPU {cuda_id} from GPUs {FLAGS.device_idxs}")
+    log.info(f"Using GPU {cuda_id} from GPUs {FLAGS.device_idxs}")
     model.cuda(cuda_id)
     optimizer = optim.Adam(model.parameters(), lr=FLAGS.learning_rate)
     loader = get_loader(train_dataset, distributed)
@@ -139,5 +150,18 @@ def distributed_wrapper(function,*args):
     else:
         function(0,0,*args)
 
+# class TqdmLoggingHandler(log.FileHandler):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#
+#     def emit(self, record):
+#         try:
+#             msg = self.format(record)
+#             tqdm.tqdm.write(msg)
+#             self.flush()
+#         except (KeyboardInterrupt, SystemExit):
+#             raise
+#         except:
+#             self.handleError(record)
 if __name__ == '__main__':
     app.run(main)

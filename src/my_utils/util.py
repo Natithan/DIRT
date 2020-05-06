@@ -7,6 +7,7 @@ from torch import distributed as dist
 
 from config import FLAGS, MODEL_RELEVANT_FLAGS
 from wrappers import MLMModelWrapper, MODEL_MAPPING
+import logging as log
 
 
 def cleanup():
@@ -25,6 +26,7 @@ def setup(rank,world_size):
     torch.manual_seed(42)
 
 def load_pretrained_model_for_SG():
+    log.info(f"Loading pretrained model for SG from {FLAGS.saved_pretrained_model_path}")
     model_path = FLAGS.saved_pretrained_model_path
     list = model_path.split("/")
     list[-1] = 'flagfile.txt'
@@ -39,7 +41,7 @@ def load_pretrained_model_for_SG():
             run_flag_dict[f].value = model_flag_dict[f].value
             updated_flags.append(f)
     if updated_flags:
-        print(f"Changed the following flags to that of the pretrained model: {updated_flags}")
+        log.info(f"Changed the following flags to that of the pretrained model: {updated_flags}")
     wrapped_model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],finetune_stage=True)
 
     # A hack because I renamed one of the models modules :P

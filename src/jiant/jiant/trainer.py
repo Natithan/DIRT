@@ -339,10 +339,14 @@ class SamplingMultiTaskTrainer:
             log.info(f"Only training on non-held-out part of train_data (first {nb_held_out_samples} of {task.n_train_examples} samples reserved as held-out samples)")
             if 0 <= FLAGS.SG_max_data_size < task.n_train_examples - nb_held_out_samples :
                 log.info(f"FLAGS.SG_max_data_size set, training on subset of data: maximum {FLAGS.SG_max_data_size} instances")
-            data_end = min(task.n_train_examples, nb_held_out_samples + FLAGS.SG_max_data_size)
+                data_end = min(task.n_train_examples, nb_held_out_samples + FLAGS.SG_max_data_size)
+            else:
+                data_end = task.n_train_examples
             # repeatable_iterable = MyRepeatableIterator(itertools.islice)
             # repeatable_iterable(task.train_data, nb_held_out_samples, data_end)
-            task_info["tr_generator"] = iterator(RepeatableIterator(lambda : (yield from itertools.islice(task.train_data, nb_held_out_samples, data_end))),
+            # task_info["tr_generator"] = iterator(RepeatableIterator(lambda : (yield from itertools.islice(task.train_data, nb_held_out_samples, data_end))),
+            #                                      num_epochs=None)
+            task_info["tr_generator"] = iterator(RepeatableIterator(lambda : (itertools.islice(task.train_data, nb_held_out_samples, data_end))),
                                                  num_epochs=None)
             n_training_examples = data_end - nb_held_out_samples
 

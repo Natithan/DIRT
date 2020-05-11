@@ -10,3 +10,4 @@ HOSTNAME = subprocess.check_output('hostname').decode().strip()
 WRITE_ROOT = f'/cw/working-{HOSTNAME}/nathan/phd'
 SMALL_SHARED_SERVER_DIR = "/home/nathan"
 TYPE_VOCAB_SIZE = 2
+

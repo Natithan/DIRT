@@ -621,26 +621,60 @@ BASE_SERVER = "arwen"
 #             f'--pretrained_model={current_run_name} --max_GPUs=1 '
 #             f'--overrides "run_name={current_run_name}"; cd ..'
 #         ]
-current_server = 'bilbo'
-current_run_name = "combo_HFpre_mypre_2"
-current_description = "A DIRT run with most recent code to compare with HFPretrain weights between this and vanilla"
+# current_server = 'bilbo'
+# current_run_name = "combo_HFpre_mypre_2"
+# current_description = "A DIRT run with most recent code to compare with HFPretrain weights between this and vanilla"
+# RUNS[current_run_name] = {'commands': [
+#     f"ssh {current_server}",
+#
+#     f"python pretrain.py --max_GPUs=1 --d_batch=3"
+#     f" --DIR=combo"
+#     f" --run_name={current_run_name}"
+#     f' --description="{current_description}"'
+#     f" --flagfile=configs/base.txt"
+#     f" --learning_rate=10e-6"
+#     f" --num_epochs=5"
+#     f" --patience=6"
+#     f" --num_serialized_models_to_keep=1"
+#     f" --use_pretrained_weights",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f'--pretrained_model={current_run_name} --max_GPUs=1 '
+#     f'--overrides "run_name={current_run_name}"; cd ..'
+# ],
+#     'description': current_description,
+#     'server': current_server}
+
+# current_server = 'frodo'
+# current_run_name = "vanilla_noHFpre_nomypre"
+# current_description = "Validate my_pretraining: check that it improves SG performance when compared to from scratch"
+# RUNS[current_run_name] = {'commands': [
+#     f"ssh {current_server}",
+#
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f' --max_GPUs=1 '
+#     f' --overrides "run_name={current_run_name}"; cd ..'
+# ],
+#     'description': current_description,
+#     'server': current_server}
+#
+# server = libtmux.Server()
+# session = server.find_where({"session_name": "exps"})
+# assert session is not None, "Don't forget to start a tmux session"
+
+current_server = 'frodo'
+current_run_name = "vanilla_HFpre_nomypre"
+current_description = "Validate my_pretrain: check for baseline that additional my_pretrain at least doesn't deteriorate performance." \
+                      " Serve as basis to compare with vanilla__HFpre_mypre"
 RUNS[current_run_name] = {'commands': [
     f"ssh {current_server}",
 
-    f"python pretrain.py --max_GPUs=1 --d_batch=3"
-    f" --DIR=combo"
-    f" --run_name={current_run_name}"
-    f' --description="{current_description}"'
-    f" --flagfile=configs/base.txt"
-    f" --learning_rate=10e-6"
-    f" --num_epochs=5"
-    f" --patience=6"
-    f" --num_serialized_models_to_keep=1"
-    f" --use_pretrained_weights",
-
     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-    f'--pretrained_model={current_run_name} --max_GPUs=1 '
-    f'--overrides "run_name={current_run_name}"; cd ..'
+    f' --max_GPUs=1 '
+    f' --use_pretrained_weights'
+    f' --flagfile=../configs/base.txt'
+    f' --overrides "run_name={current_run_name}"; cd ..'
 ],
     'description': current_description,
     'server': current_server}
@@ -743,7 +777,7 @@ for run_name, run_values in RUNS.items():
         if 'ssh' in command:
             if command == f'ssh {HOSTNAME}':  # Don't ssh extra to a host we're already on
                 continue
-            # else:
-            #     pane.send_keys('screen')
-        # pane.send_keys(command)
+            else:
+                pane.send_keys('screen')
+        pane.send_keys(command)
     time.sleep(10)  # To make sure the same GPUs aren't picked

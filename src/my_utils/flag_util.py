@@ -1,7 +1,10 @@
 # Module for util functions that are used in the setting up of default flags
 import os
+import re
+import sys
 from collections import Iterable, OrderedDict, Callable
 
+import constants
 import numpy as np
 
 
@@ -11,7 +14,9 @@ def get_freer_gpu():  # Source: https://discuss.pytorch.org/t/it-there-anyway-to
     return int(np.argmax(memory_available))
 
 
-def get_gpus_with_enough_memory(minimum_memory):
+def get_gpus_with_enough_memory():
+    using_DIR = any([re.match("--DIR=.+", arg) is not None for arg in sys.argv])
+    minimum_memory = 11000 if using_DIR else 5000
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >tmp_GPUs_free_mem')
     memory_available = [int(x.split()[2]) for x in open('tmp_GPUs_free_mem', 'r').readlines()]
     used_gpus = np.argwhere(np.array(memory_available) > minimum_memory).squeeze().tolist()

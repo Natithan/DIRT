@@ -88,7 +88,8 @@ class DirtEmbedderModule(nn.Module):
                     "tasks, under 'frozen' transfer_paradigm, their embeddings will not be trained"
                 )
 
-        # Configure scalar mixing, ELMo-style.
+        #
+        # ure scalar mixing, ELMo-style.
         if self.output_mode == "mix":
             if args.transfer_paradigm == "frozen":
                 log.warning(

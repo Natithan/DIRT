@@ -676,11 +676,14 @@ def main(cl_arguments):
 
         tabular_results_csv = os.path.join(SMALL_SHARED_SERVER_DIR, "tabular_results.csv")
 
-        df = pd.DataFrame.from_dict(
-            results_dict)  # TODO make sure df has columns for outputs of all tasks (or is able to read existing columns and add as necessary
-        with open(tabular_results_csv, 'a') as f:
-            log.info((f"Appending results to {tabular_results_csv}."))
-            df.to_csv(f, header=f.tell() == 0,index=False)
+        existing_results_df = pd.read_csv(tabular_results_csv)
+        new_results_df = pd.DataFrame.from_dict(
+            results_dict)
+        updated_results_df = new_results_df.append(existing_results_df)
+        with open(tabular_results_csv, 'w') as f:
+            log.info(f"Prepending results to {tabular_results_csv}.")
+            updated_results_df.to_csv(f, header=True, index=False)
+
     if args.delete_checkpoints_when_done and not args.keep_all_checkpoints:
         log.info("Deleting all checkpoints.")
         delete_all_checkpoints(args.run_dir)

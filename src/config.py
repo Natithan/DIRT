@@ -71,7 +71,7 @@ flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked dur
 
 # Flags that determine what the model looks like
 flags.DEFINE_string("model", "my_model", "Name of the model to use (see MODEL_MAPPING)")
-flags.DEFINE_string("DIR",'',"Which variant of distributed internal regression to employ. Options are: top_down, from_projection, or empty if not using DIR (default)")
+flags.DEFINE_string("DIR",'',"Which variant of distributed internal regression to employ. Options are: combo, top_down, from_projection, or empty if not using DIR (default)")
 flags.DEFINE_integer("d_emb", 128, "Size of token encodings before contextualization")
 flags.DEFINE_integer("d_hidden", 2048, "Size of token encodings in hidden layers (contextualized)")
 flags.DEFINE_integer("d_ff", 8192, "Number of hidden units in feedforward parts of attention blocks")
@@ -90,7 +90,7 @@ flags.DEFINE_integer("top_down_distance",2,"For internal prediction: number of l
 
 
 # Distributed training stuff
-flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(5000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
+flags.DEFINE_list("device_idxs", get_gpus_with_enough_memory(1000), "List of GPU indices. -1 for CPU. Defaults to the GPUs with at least 8000 MiB memory")
 flags.DEFINE_integer("max_GPUs", 3, "Maximum number of GPUs to use at the same time.")
 flags.DEFINE_integer("world_size",3,"Number of parallel processes. With current AllenNLP Trainer usage, equals number of GPUs used")
 flags.DEFINE_integer("local_rank",None,"Needed for DDP. Automatically assigned by torch distributed launcher, and will be used to pick GPU to run on")

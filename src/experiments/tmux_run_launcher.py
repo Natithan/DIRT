@@ -2,13 +2,23 @@ import time
 
 import libtmux
 from pathlib2 import Path
+import pickle
+import os.path
+import subprocess
 
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from pprint import pprint
+
+import git
+import time
 from constants import HOSTNAME, WRITE_ROOT, READ_ONLY_ROOT
 
 from config import FLAGS
 
 RUNS = {}
-
+BASE_SERVER = "arwen"
 
 #
 # current_run_name = "HFRoberta_HFpre_nomypre_2"
@@ -252,25 +262,25 @@ RUNS = {}
 # hf_model_handle='albert-xlarge-v1'
 # RUNS[current_run_name] = [
 #         f"ssh {current_server}",
-        #
-        # f"python pretrain.py --max_GPUs=1 --d_batch=2 --patience=1"
-        # f" --run_name={current_run_name}"
-        # f' --description="{current_description}"'
-        # f' --model=hf_baseline'
-        # f' --use_pretrained_weights'
-        # f' --hf_model_handle={hf_model_handle}'
-        # f' --learning_rate=0.0000001',
+#
+# f"python pretrain.py --max_GPUs=1 --d_batch=2 --patience=1"
+# f" --run_name={current_run_name}"
+# f' --description="{current_description}"'
+# f' --model=hf_baseline'
+# f' --use_pretrained_weights'
+# f' --hf_model_handle={hf_model_handle}'
+# f' --learning_rate=0.0000001',
 
-    #
-    #     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-    #     f' --max_GPUs=1 '
-    #     f' --description="{current_description}"'
-    #     f' --saved_pretrained_model_path={Path(READ_ONLY_ROOT,"output","pretraining",current_run_name,"best.th").as_posix()}'
-    #     f' --overrides "'
-    #     f' run_name={current_run_name},'
-    #     f' input_module=dirt'
-    #     f'"; cd ..'
-    # ]
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f' --max_GPUs=1 '
+#     f' --description="{current_description}"'
+#     f' --saved_pretrained_model_path={Path(READ_ONLY_ROOT,"output","pretraining",current_run_name,"best.th").as_posix()}'
+#     f' --overrides "'
+#     f' run_name={current_run_name},'
+#     f' input_module=dirt'
+#     f'"; cd ..'
+# ]
 
 
 # current_server = 'bilbo'
@@ -314,8 +324,8 @@ RUNS = {}
 #     ]
 # current_server = 'bilbo'
 # current_run_name = "combo_HFpre_mypre"
-# current_description = "- See if pretrained weights help in doing self-regression    \r\n" \
-#                       "- See if doing extra training with DIRT objective on top of pretrained weights improves (any aspect of) GLUE performance"
+# current_description = "See if pretrained weights help in doing self-regression    \r\n" \
+#                       "See if doing extra training with DIRT objective on top of pretrained weights improves (any aspect of) GLUE performance"
 # RUNS[current_run_name] = [
 #         f"ssh {current_server}",
 #
@@ -494,55 +504,246 @@ RUNS = {}
 #         f'"; cd ..'
 #     ]
 
-current_server = 'frodo'
-current_run_name = "HFAlbert_xl_HFpre_mypre_lr_10emin8_2_mid_epoch_check"
-current_description = "This checks SG performance with the already existing checkpoint, if this is already decent and matches baseline, I'll be satisfied "
-hf_model_handle='albert-xlarge-v1'
-RUNS[current_run_name] = [
-        f"ssh {current_server}",
+# current_server = 'frodo'
+# current_run_name = "HFAlbert_xl_HFpre_mypre_lr_10emin8_2_mid_epoch_check"
+# current_description = "This checks SG performance with the already existing checkpoint, if this is already decent and matches baseline, I'll be satisfied "
+# hf_model_handle='albert-xlarge-v1'
+# RUNS[current_run_name] = [
+#         f"ssh {current_server}",
+#
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --max_GPUs=1 '
+#         f' --description="{current_description}"'
+#         f' --saved_pretrained_model_path={Path("/cw/working-arwen/nathan/phd","output","pretraining","HFAlbert_xl_HFpre_mypre_lr_10emin8_2","model_state_epoch_0.2020-05-05-10-10-30.th").as_posix()}'
+#         f' --overrides "'
+#         f' run_name={current_run_name},'
+#         f' input_module=dirt'
+#         f'"; cd ..'
+#     ]
+#
+# current_server = 'frodo'
+# current_run_name = "baseline_xl_HFpre_mypre_lr_10emin8_2_mid_epoch_check"
+# current_description = "This checks SG performance with the already existing checkpoint, if this is already decent and matches HFalbert, I'll be satisfied "
+# hf_model_handle='albert-xlarge-v1'
+# RUNS[current_run_name] = [
+#         f"ssh {current_server}",
+#
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --max_GPUs=1 '
+#         f' --description="{current_description}"'
+#         f' --saved_pretrained_model_path={Path("/cw/working-bilbo/nathan/phd","output","pretraining","baseline_xl_HFpre_mypre_lr_10emin8_2","model_state_epoch_0.2020-05-05-10-12-30.th").as_posix()}'
+#         f' --overrides "'
+#         f' run_name={current_run_name},'
+#         f' input_module=dirt'
+#         f'"; cd ..'
+#     ]
+# current_server = 'frodo'
+# current_run_name = "vanilla_noHFpre_mypre_4"
+# current_description = "A baseline run to compare with combo_noHFpre_mypre_5. With updated code: dropouts now completely as in HFAlbert, and updated SG training data: keeping a separate held-out set from the train data"
+# RUNS[current_run_name] = [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=3"
+#             f" --run_name={current_run_name}"
+#             f' --description="{current_description}"'
+#             f" --flagfile=configs/base.txt"
+#             f" --learning_rate=10e-6"
+#             f" --num_epochs=5"
+#             f" --patience=6"
+#             f" --num_serialized_models_to_keep=1"
+#         f" --device_idxs=2",
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --pretrained_model={current_run_name} --max_GPUs=1  --device_idxs=2'
+#             f' --overrides "run_name={current_run_name}"; cd ..'
+#         ]
+# current_server = 'bilbo'
+# current_run_name = "combo_noHFpre_mypre_5"
+# current_description = "A DIRT run to compare with vanilla_noHFpre_mypre_4. With updated code: dropouts now completely as in HFAlbert, and updated SG training data: keeping a separate held-out set from the train data"
+# RUNS[current_run_name] = [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=3 "
+#         f" --DIR=combo"
+#             f" --run_name={current_run_name}"
+#             f' --description="{current_description}"'
+#             f" --flagfile=configs/base.txt"
+#             f" --learning_rate=10e-6"
+#             f" --num_epochs=5"
+#             f" --patience=6"
+#             f" --num_serialized_models_to_keep=1"
+#         f" --device_idxs=3",
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#             f' --overrides "run_name={current_run_name}"; cd ..'
+#         ]
 
-        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --max_GPUs=1 '
-        f' --description="{current_description}"'
-        f' --saved_pretrained_model_path={Path("/cw/working-arwen/nathan/phd","output","pretraining","HFAlbert_xl_HFpre_mypre_lr_10emin8_2","model_state_epoch_0.2020-05-05-10-10-30.th").as_posix()}'
-        f' --overrides "'
-        f' run_name={current_run_name},'
-        f' input_module=dirt'
-        f'"; cd ..'
-    ]
 
-current_server = 'frodo'
-current_run_name = "baseline_xl_HFpre_mypre_lr_10emin8_2_mid_epoch_check"
-current_description = "This checks SG performance with the already existing checkpoint, if this is already decent and matches HFalbert, I'll be satisfied "
-hf_model_handle='albert-xlarge-v1'
-RUNS[current_run_name] = [
-        f"ssh {current_server}",
+# current_server = 'frodo'
+# current_run_name = "vanilla_HFpre_mypre_2"
+# current_description = "A DIRT run with most recent code to compare with HFPretrain weights between this and combo"
+# RUNS[current_run_name] = [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=3  --device_idxs=2"
+#             f" --run_name={current_run_name}"
+#             f' --description="{current_description}"'
+#             f" --flagfile=configs/base.txt"
+#             f" --learning_rate=10e-6"
+#             f" --num_epochs=5"
+#             f" --patience=6"
+#             f" --num_serialized_models_to_keep=1"
+#         f" --use_pretrained_weights",
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --pretrained_model={current_run_name} --max_GPUs=1  --device_idxs=2 '
+#             f' --overrides "run_name={current_run_name}"; cd ..'
+#         ]
+# current_server = 'bilbo'
+# current_run_name = "combo_HFpre_mypre_2"
+# current_description = "A DIRT run with most recent code to compare with HFPretrain weights between this and vanilla"
+# RUNS[current_run_name] = [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=3"
+#         f" --DIR=combo"
+#             f" --run_name={current_run_name}"
+#             f' --description="{current_description}"'
+#             f" --flagfile=configs/base.txt"
+#             f" --learning_rate=10e-6"
+#             f" --num_epochs=5"
+#             f" --patience=6"
+#             f" --num_serialized_models_to_keep=1"
+#         f" --use_pretrained_weights",
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f'--pretrained_model={current_run_name} --max_GPUs=1 '
+#             f'--overrides "run_name={current_run_name}"; cd ..'
+#         ]
+current_server = 'bilbo'
+current_run_name = "combo_HFpre_mypre_2"
+current_description = "A DIRT run with most recent code to compare with HFPretrain weights between this and vanilla"
+RUNS[current_run_name] = {'commands': [
+    f"ssh {current_server}",
 
-        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --max_GPUs=1 '
-        f' --description="{current_description}"'
-        f' --saved_pretrained_model_path={Path("/cw/working-bilbo/nathan/phd","output","pretraining","baseline_xl_HFpre_mypre_lr_10emin8_2","model_state_epoch_0.2020-05-05-10-12-30.th").as_posix()}'
-        f' --overrides "'
-        f' run_name={current_run_name},'
-        f' input_module=dirt'
-        f'"; cd ..'
-    ]
+    f"python pretrain.py --max_GPUs=1 --d_batch=3"
+    f" --DIR=combo"
+    f" --run_name={current_run_name}"
+    f' --description="{current_description}"'
+    f" --flagfile=configs/base.txt"
+    f" --learning_rate=10e-6"
+    f" --num_epochs=5"
+    f" --patience=6"
+    f" --num_serialized_models_to_keep=1"
+    f" --use_pretrained_weights",
+
+    f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+    f'--pretrained_model={current_run_name} --max_GPUs=1 '
+    f'--overrides "run_name={current_run_name}"; cd ..'
+],
+    'description': current_description,
+    'server': current_server}
+
 server = libtmux.Server()
-session = server.find_where({"session_name":"exps"})
+session = server.find_where({"session_name": "exps"})
 assert session is not None, "Don't forget to start a tmux session"
 
 
-def track_run_in_sheets(run_name,commands):
-    pass #TODO
+def track_run_in_sheets(run_name, commands, description, server):
+    SPREADSHEET_ID = '1fOlHtrbAu0Bofq0Kl6s-0QBsX1j94RCClOj-iDsIvL0'
+    SHEET_ID = 0
+    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'google_sheets_credentials.json', SCOPES)
+            creds = flow.run_console()
+        # Save the credentials for the next run
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+
+    service = build('sheets', 'v4', credentials=creds)
+
+    # The ID of the spreadsheet to update.
+    spreadsheet_id = SPREADSHEET_ID
 
 
-for run_name, commands in RUNS.items():
-    w = session.new_window(attach=False, window_name=run_name)
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    repo = git.Repo(search_parent_directories=True)
+    git_sha = repo.head.object.hexsha
+    git_link = f"https://github.com/Natithan/phd/commit/{git_sha}"
+    script = ';'.join(commands)
+    status = 'Running'
+    joiner = "__JOINER__"
+
+    batch_update_values_request_body = {
+        'requests': [
+            {
+                "insertDimension": {
+                    "range": {
+                        "dimension": "ROWS",
+                        "startIndex": 1,
+                        "endIndex": 2,
+                        "sheetId": SHEET_ID
+                    },
+                    "inheritFromBefore": False
+                }
+            },
+            {
+                "pasteData": {
+                    "coordinate": {
+                        "rowIndex": 1,
+                        "columnIndex": 0,
+                        "sheetId": SHEET_ID
+                    },
+
+                    "data": joiner.join([
+                        timestamp, run_name, description, git_sha, git_link, server, script, status
+                    ]),
+                    "delimiter": joiner
+                }
+            }
+        ]
+    }
+
+    request = service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=batch_update_values_request_body)
+
+    response = request.execute()
+
+    pprint(response)
+
+
+for run_name, run_values in RUNS.items():
+    commands = run_values['commands']
+    description = run_values['description']
+    server = run_values['server']
+    ws = [w for w in session.windows if w['window_name'] == run_name]
+    assert len(ws) < 2, f"Found two or more windows with name {run_name}"
+    if len(ws) == 0:
+        w = session.new_window(attach=False, window_name=run_name)
+    else:
+        w = ws[0]
     pane = w.panes[0]
-    track_run_in_sheets(run_name,commands)
+    print("Logging run in google sheet")
+    track_run_in_sheets(run_name, commands, description, server)
     print(f"Sending following commands to window  {w['window_name']} : {';'.join(commands)}")
     for command in commands:
-        if command == f'ssh {HOSTNAME}': # Don't ssh extra to a host we're already on
-            continue
-        pane.send_keys(command)
-    time.sleep(10) # To make sure the same GPUs aren't picked
+        if 'ssh' in command:
+            if command == f'ssh {HOSTNAME}':  # Don't ssh extra to a host we're already on
+                continue
+            # else:
+            #     pane.send_keys('screen')
+        # pane.send_keys(command)
+    time.sleep(10)  # To make sure the same GPUs aren't picked

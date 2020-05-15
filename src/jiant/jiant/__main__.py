@@ -679,7 +679,7 @@ def main(cl_arguments):
         existing_results_df = pd.read_csv(tabular_results_csv)
         new_results_df = pd.DataFrame.from_dict(
             results_dict)
-        updated_results_df = new_results_df.append(existing_results_df)
+        updated_results_df = new_results_df.append(existing_results_df,sort=False)
         with open(tabular_results_csv, 'w') as f:
             log.info(f"Prepending results to {tabular_results_csv}.")
             updated_results_df.to_csv(f, header=True, index=False)

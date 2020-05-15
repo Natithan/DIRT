@@ -55,10 +55,10 @@ class DIRTLMHead(Model):
         self.finetune_stage = finetune_stage
         self.dropout = MyDropout()
 
-        if FLAGS.use_pretrained_weights:
-            self.load_pretrained_weights()
+        if FLAGS.use_HFpretrained_weights:
+            self.load_HFpretrained_weights()
 
-    def load_pretrained_weights(self):
+    def load_HFpretrained_weights(self):
         hf_state_dict = AlbertForMaskedLM.from_pretrained(FLAGS.hf_model_handle).state_dict()
         repl = {"albert.embeddings": 'embedder',
                 'word_embeddings':'idx_to_embedding',

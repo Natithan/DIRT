@@ -50,7 +50,7 @@ class AlbertMLMWrapper(Model): #TODO change this to be AlbertWrapper
         self.metrics_dict = {}
         model_class = AlbertForMaskedLM
         config_name = FLAGS.hf_model_handle
-        if FLAGS.use_pretrained_weights:
+        if FLAGS.use_HFpretrained_weights:
             self.model = model_class.from_pretrained(config_name,output_hidden_states=True)
         else:
             config = model_class.config_class.from_pretrained(

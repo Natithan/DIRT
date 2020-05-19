@@ -557,29 +557,29 @@ BASE_SERVER = "arwen"
 #             f' --pretrained_model={current_run_name} --max_GPUs=1  --device_idxs=2'
 #             f' --overrides "run_name={current_run_name}"; cd ..'
 #         ]
-current_server = 'bilbo'
-current_run_name = "combo_noHFpre_mypre_5"
-current_description = "A DIRT run to compare with vanilla_noHFpre_mypre_4. With updated code: dropouts now completely as in HFAlbert, and updated SG training data: keeping a separate held-out set from the train data"
-RUNS[current_run_name] = {'commands':[
-        f"ssh {current_server}",
-
-        # f"python pretrain.py --max_GPUs=1 --d_batch=3 "
-        # f" --DIR=combo"
-        #     f" --run_name={current_run_name}"
-        #     f' --description="{current_description}"'
-        #     f" --flagfile=configs/base.txt"
-        #     f" --learning_rate=10e-6"
-        #     f" --num_epochs=5"
-        #     f" --patience=6"
-        #     f" --num_serialized_models_to_keep=1"
-        # f" --device_idxs=3",
-
-            f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-            f' --pretrained_model={current_run_name} --max_GPUs=1 '
-            f' --overrides "run_name={current_run_name}"; cd ..'
-        ],
-    'description': current_description,
-    'server': current_server}
+# current_server = 'bilbo'
+# current_run_name = "combo_noHFpre_mypre_5"
+# current_description = "A DIRT run to compare with vanilla_noHFpre_mypre_4. With updated code: dropouts now completely as in HFAlbert, and updated SG training data: keeping a separate held-out set from the train data"
+# RUNS[current_run_name] = {'commands':[
+#         f"ssh {current_server}",
+#
+#         # f"python pretrain.py --max_GPUs=1 --d_batch=3 "
+#         # f" --DIR=combo"
+#         #     f" --run_name={current_run_name}"
+#         #     f' --description="{current_description}"'
+#         #     f" --flagfile=configs/base.txt"
+#         #     f" --learning_rate=10e-6"
+#         #     f" --num_epochs=5"
+#         #     f" --patience=6"
+#         #     f" --num_serialized_models_to_keep=1"
+#         # f" --device_idxs=3",
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#             f' --overrides "run_name={current_run_name}"; cd ..'
+#         ],
+#     'description': current_description,
+#     'server': current_server}
 
 
 # current_server = 'frodo'
@@ -623,29 +623,29 @@ RUNS[current_run_name] = {'commands':[
 #             f'--pretrained_model={current_run_name} --max_GPUs=1 '
 #             f'--overrides "run_name={current_run_name}"; cd ..'
 #         ]
-current_server = 'bilbo'
-current_run_name = "combo_HFpre_mypre_2"
-current_description = "A DIRT run with most recent code to compare with HFPretrain weights between this and vanilla"
-RUNS[current_run_name] = {'commands': [
-    f"ssh {current_server}",
-
-    # f"python pretrain.py --max_GPUs=1 --d_batch=3"
-    # f" --DIR=combo"
-    # f" --run_name={current_run_name}"
-    # f' --description="{current_description}"'
-    # f" --flagfile=configs/base.txt"
-    # f" --learning_rate=10e-6"
-    # f" --num_epochs=5"
-    # f" --patience=6"
-    # f" --num_serialized_models_to_keep=1"
-    # f" --use_HFpretrained_weights",
-
-    f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-    f'--pretrained_model={current_run_name} --max_GPUs=1 '
-    f'--overrides "run_name={current_run_name}"; cd ..'
-],
-    'description': current_description,
-    'server': current_server}
+# current_server = 'bilbo'
+# current_run_name = "combo_HFpre_mypre_2"
+# current_description = "A DIRT run with most recent code to compare with HFPretrain weights between this and vanilla"
+# RUNS[current_run_name] = {'commands': [
+#     f"ssh {current_server}",
+#
+#     # f"python pretrain.py --max_GPUs=1 --d_batch=3"
+#     # f" --DIR=combo"
+#     # f" --run_name={current_run_name}"
+#     # f' --description="{current_description}"'
+#     # f" --flagfile=configs/base.txt"
+#     # f" --learning_rate=10e-6"
+#     # f" --num_epochs=5"
+#     # f" --patience=6"
+#     # f" --num_serialized_models_to_keep=1"
+#     # f" --use_HFpretrained_weights",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f'--pretrained_model={current_run_name} --max_GPUs=1 '
+#     f'--overrides "run_name={current_run_name}"; cd ..'
+# ],
+#     'description': current_description,
+#     'server': current_server}
 
 # current_server = 'frodo'
 # current_run_name = "vanilla_noHFpre_nomypre"
@@ -681,9 +681,56 @@ RUNS[current_run_name] = {'commands': [
 #     'description': current_description,
 #     'server': current_server}
 
+# current_server = 'frodo'
+# current_run_name = "combo_noHFpre_mypre_5_r2"
+# current_description = "A second DIRT run, just to have an average"
+# RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=3 "
+#         f" --DIR=combo"
+#             f" --run_name={current_run_name}"
+#             f' --description="{current_description}"'
+#             f" --flagfile=configs/base.txt"
+#             f" --learning_rate=10e-6"
+#             f" --num_epochs=5"
+#             f" --patience=6"
+#             f" --num_serialized_models_to_keep=1",
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#             f' --overrides "run_name={current_run_name}"; cd ..'
+#         ],
+#     'description': current_description,
+#     'server': current_server}
+#
+# current_server = 'bilbo'
+# current_run_name = "vanilla_noHFpre_mypre_4_r2"
+# current_description = "A second run of a baseline run to compare with combo_noHFpre_mypre_5, to have an average."
+# RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=3"
+#             f" --run_name={current_run_name}"
+#             f' --description="{current_description}"'
+#             f" --flagfile=configs/base.txt"
+#             f" --learning_rate=10e-6"
+#             f" --num_epochs=5"
+#             f" --patience=6"
+#             f" --num_serialized_models_to_keep=1"
+#         f" --device_idxs=2",
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --pretrained_model={current_run_name} --max_GPUs=1  --device_idxs=2'
+#             f' --overrides "run_name={current_run_name}"; cd ..'
+#         ],
+#     'description': current_description,
+#     'server': current_server}
+
 current_server = 'frodo'
-current_run_name = "combo_noHFpre_mypre_5_r2"
-current_description = "A second DIRT run, just to have an average"
+current_run_name = "alternating_prediction_noHFpre_mypre"
+current_description = "Test whether passing on predicted values (alternatingly with improving those predictions) " \
+                      "improves performance by virtue of acting as a regularization. To compare with combo_noHFpre_mypre_5"
 RUNS[current_run_name] = {'commands': [
         f"ssh {current_server}",
 
@@ -695,7 +742,8 @@ RUNS[current_run_name] = {'commands': [
             f" --learning_rate=10e-6"
             f" --num_epochs=5"
             f" --patience=6"
-            f" --num_serialized_models_to_keep=1",
+            f" --num_serialized_models_to_keep=1"
+        f" --alternate_internal_prediction",
 
             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
             f' --pretrained_model={current_run_name} --max_GPUs=1 '
@@ -704,28 +752,7 @@ RUNS[current_run_name] = {'commands': [
     'description': current_description,
     'server': current_server}
 
-current_server = 'bilbo'
-current_run_name = "vanilla_noHFpre_mypre_4_r2"
-current_description = "A second run of a baseline run to compare with combo_noHFpre_mypre_5, to have an average."
-RUNS[current_run_name] = {'commands': [
-        f"ssh {current_server}",
 
-        f"python pretrain.py --max_GPUs=1 --d_batch=3"
-            f" --run_name={current_run_name}"
-            f' --description="{current_description}"'
-            f" --flagfile=configs/base.txt"
-            f" --learning_rate=10e-6"
-            f" --num_epochs=5"
-            f" --patience=6"
-            f" --num_serialized_models_to_keep=1"
-        f" --device_idxs=2",
-
-            f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-            f' --pretrained_model={current_run_name} --max_GPUs=1  --device_idxs=2'
-            f' --overrides "run_name={current_run_name}"; cd ..'
-        ],
-    'description': current_description,
-    'server': current_server}
 server = libtmux.Server()
 session = server.find_where({"session_name": "exps"})
 assert session is not None, "Don't forget to start a tmux session"
@@ -825,6 +852,8 @@ for run_name, run_values in RUNS.items():
             if command == f'ssh {HOSTNAME}':  # Don't ssh extra to a host we're already on
                 continue
             else:
+                pane.send_keys(command)
                 pane.send_keys('screen')
-        pane.send_keys(command)
+        else:
+            pane.send_keys(command)
     time.sleep(10)  # To make sure the same GPUs aren't picked

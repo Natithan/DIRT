@@ -68,7 +68,7 @@ flags.DEFINE_string("blob_folder",Path(READ_ONLY_ROOT,"blobs").as_posix(),"Path 
 flags.DEFINE_string("objective", "simple_mlm",
                     "Name of the denoising objective to use (see OBJECTIVE_MAPPING)")
 flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")
-
+flags.DEFINE_bool("alternate_internal_prediction",False,"Whether to alternate using internal predictions as a loss creator and as a value to pass on.")
 
 # Flags that determine what the model looks like
 flags.DEFINE_string("model", "my_model", "Name of the model to use (see MODEL_MAPPING)")

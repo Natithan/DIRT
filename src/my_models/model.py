@@ -50,6 +50,7 @@ class DIRTLMHead(Model):
                 get_activation(),
                 nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
             )
+            self.learn_phase = True
         self.lm_head = LMHead()
         self.metrics_dict = {}
         self.finetune_stage = finetune_stage
@@ -108,16 +109,21 @@ class DIRTLMHead(Model):
         if clean:
             encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],clean=clean)
         else:
+
             encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],
                                top_down=self.shared_top_down_predictor,
                                from_left=self.shared_from_left_predictor,
                                from_right=self.shared_from_right_predictor,
                                combiner=self.combiner,
-                               clean=clean)
+                               clean=clean,
+                                   learn_phase=self.learn_phase)
         embedded_inputs = self.embedder(input_ids,token_type_ids)
-        encoded, _, cum_layer_loss = encoder(embedded_inputs, padding_mask)
+        encoded, _, cum_layer_loss, layer_loss_list = encoder(embedded_inputs, padding_mask)
         if FLAGS.DIR == 'combo':
             normalizer = FLAGS.nb_encoder_layers - FLAGS.top_down_distance
+
+            if FLAGS.alternate_internal_prediction:
+                self.learn_phase = not self.learn_phase
         else:
             normalizer = FLAGS.nb_encoder_layers
         cum_layer_loss = cum_layer_loss / normalizer  # Normalize layer loss by number of times it is calculated
@@ -138,6 +144,10 @@ class DIRTLMHead(Model):
             self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
             self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
                                                                                 torch.Tensor) else cum_layer_loss
+            for layer, loss in enumerate(layer_loss_list):
+                self.metrics_dict[f'DIR_loss_layer_{layer}'] = loss.item() if isinstance(loss,
+                                                                                torch.Tensor) else loss
+
         result_dict['vocab_scores'] = vocab_scores
 
         return result_dict  # Dictionary format for AllenNLP trainer loop
@@ -213,7 +223,7 @@ class EncoderBlock(nn.Module):
             )
             # self.top_down_regressor = nn.Sequential()
     def forward(self, in_state, padding_mask,
-                cum_layer_loss=0):
+                cum_layer_loss=0,layer_loss_list=[]):
         attention_output_dict = self.multihead_attention(in_state, in_state, padding_mask)
         att_out = attention_output_dict['activations']
         out_state = self.feedforward(att_out)
@@ -232,16 +242,18 @@ class EncoderBlock(nn.Module):
                 layer_loss = 0
         else:
             layer_loss = 0
-        return out_state, padding_mask, layer_loss + cum_layer_loss
+        layer_loss_list.append(layer_loss)
+        return out_state, padding_mask, layer_loss + cum_layer_loss, layer_loss_list
 
 
 class MySequential(nn.Sequential): #TODO move this to a for loop in enclosing module
     '''
     Allows Sequential to pass on multiple in- and outputs
     '''
-    def __init__(self,*args,top_down=None,from_left=None,from_right=None,combiner=None,clean=True):
+    def __init__(self,*args,top_down=None,from_left=None,from_right=None,combiner=None,clean=True,learn_phase=True):
         super().__init__(*args)
         self.clean = clean
+        self.learn_phase = learn_phase
         if not self.clean:
             self.top_down_predictor = top_down
             self.from_left_predictor = from_left
@@ -251,12 +263,13 @@ class MySequential(nn.Sequential): #TODO move this to a for loop in enclosing mo
     def forward(self, *inputs):
         layers = self[:FLAGS.nb_encoder_layers]
         cum_layer_loss = 0
+        layer_loss_list = []
         for layer_idx, module in enumerate(layers): #TODO fix heavy mem overhead
             if FLAGS.DIR == 'combo' and (layer_idx + FLAGS.top_down_distance < len(layers)) and (not self.clean):
                 in_activations, padding_mask = inputs[:2]
                 masked_inputs, DIRT_mask = apply_sequence_mask(in_activations)
                 contextualizer = layers[layer_idx:layer_idx + FLAGS.top_down_distance] #Clean true by default
-                top_down_inputs,_, _ = contextualizer(masked_inputs,padding_mask)
+                top_down_inputs,_, _,_ = contextualizer(masked_inputs,padding_mask)
                 left_adjacent_inputs = in_activations.roll(shifts=1,dims=1)
                 right_adjacent_inputs = in_activations.roll(shifts=-1,dims=1)
                 top_down_prediction = self.top_down_predictor(top_down_inputs) # #TODO maybe add some dropout in dirt parts
@@ -270,15 +283,22 @@ class MySequential(nn.Sequential): #TODO move this to a for loop in enclosing mo
                 edge_mask[0] = True
                 edge_mask[-1] = True
                 DIRT_mask = DIRT_mask | edge_mask
-                layer_loss = contrastive_L2_loss(in_activations, combined_prediction, DIRT_mask)
-                cum_layer_loss += layer_loss
+                if self.learn_phase:
+                    layer_loss = contrastive_L2_loss(in_activations, combined_prediction, DIRT_mask)
+                    cum_layer_loss += layer_loss
+                    layer_loss_list.append(layer_loss)
+                else:
+                    inputs = (torch.where(DIRT_mask[None,:,None],inputs[0],combined_prediction),) + inputs[1:]
+
+
+
 
             if type(inputs) == tuple:
                 inputs = module(*inputs)
             else:
                 inputs = module(inputs)
         if (not self.clean) and FLAGS.DIR == 'combo':
-            inputs = inputs[:2] +(cum_layer_loss,)
+            inputs = inputs[:2] +(cum_layer_loss,) + (layer_loss_list,)
         return inputs
 
 

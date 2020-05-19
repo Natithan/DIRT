@@ -18,7 +18,7 @@ from absl import app
 from config import FLAGS, process_flags
 import numpy as np
 
-from text_input_pipeline import get_data_dict
+from text_input_pipeline import get_data_dict, get_data_dict_old
 from allennlp.training import Checkpointer
 
 from my_trainer import MyTrainer, MyCheckpointer
@@ -71,7 +71,7 @@ def main(_):
     open(flagfile, "x")
     FLAGS.append_flags_into_file(flagfile)
 
-    data_dict = get_data_dict()
+    data_dict = get_data_dict_old()
     train_dataset, test_dataset, val_dataset = (data_dict[key] for key in
                                                        ('train', 'test', 'val'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model])

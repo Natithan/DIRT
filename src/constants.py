@@ -11,6 +11,4 @@ WRITE_ROOT = f'/cw/working-{HOSTNAME}/nathan/phd'
 SMALL_SHARED_SERVER_DIR = "/home/nathan"
 TYPE_VOCAB_SIZE = 2
 
-WIKI_DATA_PATH = "/cw/working-arwen/damien/datasets/wiki/text/*/*.json"
-DF_PICKLE_PATH = '/cw/working-arwen/nathan/phd/data/wiki/text.pkl'
 

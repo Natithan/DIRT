@@ -674,20 +674,65 @@ RUNS[current_run_name] = {'commands': [
 #
 #     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
 #     f' --max_GPUs=1 '
-#     f' --use_HFpretrained_weights'
+#     f' --use_pretrained_weights'
 #     f' --flagfile=../configs/base.txt'
 #     f' --overrides "run_name={current_run_name}"; cd ..'
 # ],
 #     'description': current_description,
 #     'server': current_server}
 
+current_server = 'frodo'
+current_run_name = "combo_noHFpre_mypre_5_r2"
+current_description = "A second DIRT run, just to have an average"
+RUNS[current_run_name] = {'commands': [
+        f"ssh {current_server}",
+
+        f"python pretrain.py --max_GPUs=1 --d_batch=3 "
+        f" --DIR=combo"
+            f" --run_name={current_run_name}"
+            f' --description="{current_description}"'
+            f" --flagfile=configs/base.txt"
+            f" --learning_rate=10e-6"
+            f" --num_epochs=5"
+            f" --patience=6"
+            f" --num_serialized_models_to_keep=1",
+
+            f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+            f' --pretrained_model={current_run_name} --max_GPUs=1 '
+            f' --overrides "run_name={current_run_name}"; cd ..'
+        ],
+    'description': current_description,
+    'server': current_server}
+
+current_server = 'bilbo'
+current_run_name = "vanilla_noHFpre_mypre_4_r2"
+current_description = "A second run of a baseline run to compare with combo_noHFpre_mypre_5, to have an average."
+RUNS[current_run_name] = {'commands': [
+        f"ssh {current_server}",
+
+        f"python pretrain.py --max_GPUs=1 --d_batch=3"
+            f" --run_name={current_run_name}"
+            f' --description="{current_description}"'
+            f" --flagfile=configs/base.txt"
+            f" --learning_rate=10e-6"
+            f" --num_epochs=5"
+            f" --patience=6"
+            f" --num_serialized_models_to_keep=1"
+        f" --device_idxs=2",
+
+            f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+            f' --pretrained_model={current_run_name} --max_GPUs=1  --device_idxs=2'
+            f' --overrides "run_name={current_run_name}"; cd ..'
+        ],
+    'description': current_description,
+    'server': current_server}
 server = libtmux.Server()
 session = server.find_where({"session_name": "exps"})
 assert session is not None, "Don't forget to start a tmux session"
 
 
 def track_run_in_sheets(run_name, commands, description, server):
-    SPREADSHEET_ID = '1fOlHtrbAu0Bofq0Kl6s-0QBsX1j94RCClOj-iDsIvL0'
+    SPREADSHEET_ID = '1JBFTrsLGd35ZZ2ATbOmv6WzF57A2xtEhneU5vQQXtj4'
     SHEET_ID = 0
     SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 

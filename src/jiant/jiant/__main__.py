@@ -676,7 +676,7 @@ def main(cl_arguments):
 
         tabular_results_csv = os.path.join(SMALL_SHARED_SERVER_DIR, "tabular_results.csv")
 
-        existing_results_df = pd.read_csv(tabular_results_csv)
+        existing_results_df = pd.read_csv(tabular_results_csv,index_col=False)
         new_results_df = pd.DataFrame.from_dict(
             results_dict)
         updated_results_df = new_results_df.append(existing_results_df,sort=False)

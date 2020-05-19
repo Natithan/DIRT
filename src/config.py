@@ -62,6 +62,7 @@ flags.DEFINE_float("learning_rate", 10e-8, "Learning rate")
 flags.DEFINE_integer("nb_subepochs", 100, "Number of points at which to do the logging and validating that the default"
                                       "allenNLP trainer only does at the end of every epoch."
                                       "To deal with large epochs")
+flags.DEFINE_string("blob_folder",Path(READ_ONLY_ROOT,"blobs").as_posix(),"Path to store pickled versions of the pretraining data")
 
 #Flags determining denoising objective
 flags.DEFINE_string("objective", "simple_mlm",

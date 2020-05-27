@@ -26,21 +26,19 @@ MODEL_RELEVANT_FLAGS = ["model",
                         "nb_feedforward_layers",
                         "relative_attention_num_buckets",
                         "hf_model_handle"]
-# TODO maybe make multiple configs? Or maybe keep model hyperparams in some config, and use FLAGS just for folder names etc
 FLAGS = flags.FLAGS
 flags.DEFINE_integer("d_batch", 2, "Batch size. If DIR is not none, this is also the number of negative samples + 1")
 flags.DEFINE_float("DIR_loss_fraction",0.95,"Fraction of the total loss that the distributed regression loss accounts for")
 flags.DEFINE_integer("model_save_interval", 300, "Number of seconds after which a model will be checkpointed, even within an epoch")
+flags.DEFINE_integer("num_serialized_models_to_keep", 1, "Number of serialized trained models to store.")
 flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
 flags.DEFINE_string("mode", "", "Flag to allow python console command line argument")
 flags.DEFINE_bool("mini", False, "Whether to work with mini data for debugging purposes")
-flags.DEFINE_integer("beam_width", 3, "Width of the beam during the decoding beam search phase.")
 flags.DEFINE_string("pretrain_data_folder", Path(READ_ONLY_ROOT,"data/pretraining").as_posix(), "Folder with subfolders corresponding to different dataset to all use as pretraining data")
 flags.DEFINE_string("output_folder", Path(WRITE_ROOT,"output","pretraining").as_posix(), "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
                     "Folder with trained models and tensorboard logs")
-flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings.")
-flags.DEFINE_integer("num_serialized_models_to_keep", 1, "Number of serialized trained models to store.")
+flags.DEFINE_string("description","","Informal description of a run, will be stored in description.txt in the run_name folder")
 flags.DEFINE_bool("use_HFpretrained_weights", False, "Whether to initialize the model with hf pretrained weights.")
 flags.DEFINE_string("hf_model_handle","albert-base-v1","Name of the huggingface model handle to use for both tokenizer "
                                                          "and pretrained weights (if those are loaded") #v2 seems to be faulty: https://github.com/huggingface/transformers/pull/1683#issuecomment-556001607
@@ -49,7 +47,6 @@ flags.DEFINE_string("saved_pretrained_model_path","",
                     "Path to a checkpoint of a pretrained model. "
                     "If \"pretrained_model\" flag is provided, equals WRITE_ROOT/output/my_model/<pretrained_model>/best.th")
 flags.DEFINE_string("cache_dir",Path(READ_ONLY_ROOT,"cache").as_posix(),"Directory to store a cache of 🤗 transformers tokenizer ")
-flags.DEFINE_string("description","","Informal description of a run, will be stored in description.txt in the run_name folder")
 flags.DEFINE_integer("SG_max_data_size",-1,"If negative, the full data is used for each task. "
                                         "If positive, this is the maximum index up to which samples are considered per epoch "
                                         "during SG finetuning, validating and evaluating")
@@ -58,11 +55,10 @@ flags.DEFINE_integer("manual_seed",None,"Running multiple experiments with the s
 # Trainer flags
 flags.DEFINE_integer("patience", 10, "Number of epochs the validation metric can worsen before stopping training.")
 flags.DEFINE_integer("num_epochs", 5, "Number of epochs to train for.") # Default low because biggg epochs. Also keeping every epoch for this reason
-flags.DEFINE_float("learning_rate", 10e-8, "Learning rate")
-flags.DEFINE_integer("nb_subepochs", 100, "Number of points at which to do the logging and validating that the default"
-                                      "allenNLP trainer only does at the end of every epoch."
-                                      "To deal with large epochs")
+flags.DEFINE_float("learning_rate", 10e-8, "Initial learning rate")
+
 flags.DEFINE_string("blob_folder",Path(READ_ONLY_ROOT,"blobs").as_posix(),"Path to store pickled versions of the pretraining data")
+flags.DEFINE_bool("old_pretrain_data",False,"Whether to do pretraining on an old version of the pretraining data: only the train split of the Gutenberg corpus.")
 
 #Flags determining denoising objective
 flags.DEFINE_string("objective", "simple_mlm",
@@ -84,6 +80,7 @@ flags.DEFINE_integer("nb_feedforward_layers", 2,
                      "Number of layers in the feedforward subcomponents of the transformer.")
 flags.DEFINE_string("activation","gelu","Type of nonlinearity to use.")
 flags.DEFINE_string("pos_embeddings","absolute","Type of positional encoding to use.")
+flags.DEFINE_integer("relative_attention_num_buckets", 32, "Number of different position embeddings if the flag pos_embeddings is 'relative' .")
 flags.DEFINE_float("layernorm_eps",10e-12,"Epsilon to use for Layernorm. Different than default to be in sync with HF Albert")
 flags.DEFINE_integer("top_down_distance",2,"For internal prediction: number of layers to feed masked internal activations through before using result to predict masked activation")
 
@@ -135,6 +132,7 @@ def get_my_tokenizer():
     global TOKENIZER # To not reload tokenizer with different calls
     if TOKENIZER is None:
         TOKENIZER = AlbertTokenizer.from_pretrained(FLAGS.hf_model_handle)
+        TOKENIZER.max_len = FLAGS.max_seq_length
     return TOKENIZER
 ACTIVATION_MAPPING = OrderedDict(
     [

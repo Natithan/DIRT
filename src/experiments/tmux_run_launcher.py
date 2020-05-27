@@ -727,27 +727,105 @@ BASE_SERVER = "arwen"
 #     'description': current_description,
 #     'server': current_server}
 
-current_server = 'frodo'
-current_run_name = "alternating_prediction_noHFpre_mypre"
-current_description = "Test whether passing on predicted values (alternatingly with improving those predictions) " \
-                      "improves performance by virtue of acting as a regularization. To compare with combo_noHFpre_mypre_5"
+# current_server = 'rose'
+# current_run_name = "alternating_prediction_noHFpre_mypre"
+# current_description = "Test whether passing on predicted values (alternatingly with improving those predictions) " \
+#                       "improves performance by virtue of acting as a regularization. To compare with combo_noHFpre_mypre_5"
+# RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=3 "
+#         f" --DIR=combo"
+#             f" --run_name={current_run_name}"
+#             f' --description="{current_description}"'
+#             f" --flagfile=configs/base.txt"
+#             f" --learning_rate=10e-6"
+#             f" --num_epochs=5"
+#             f" --patience=6"
+#             f" --num_serialized_models_to_keep=1"
+#         f" --alternate_internal_prediction",
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#             f' --overrides "run_name={current_run_name}"; cd ..'
+#         ],
+#     'description': current_description,
+#     'server': current_server}
+
+# current_server = 'frodo'
+# current_run_name = "alternating_prediction_noHFpre_mypre_r2"
+# current_description = "Another run for: Test whether passing on predicted values (alternatingly with improving those predictions) " \
+#                       "improves performance by virtue of acting as a regularization. To compare with combo_noHFpre_mypre_5"
+# RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=3 "
+#         f" --DIR=combo"
+#             f" --run_name={current_run_name}"
+#             f' --description="{current_description}"'
+#             f" --flagfile=configs/base.txt"
+#             f" --learning_rate=10e-6"
+#             f" --num_epochs=5"
+#             f" --patience=6"
+#             f" --num_serialized_models_to_keep=1"
+#         f" --alternate_internal_prediction"
+#         f" --old_pretrain_data",
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#             f' --overrides "run_name={current_run_name}"; cd ..'
+#         ],
+#     'description': current_description,
+#     'server': current_server}
+
+# current_server = 'arwen'
+# current_run_name = "alternating_prediction_noHFpre_mypre_new_data"
+# current_description = "Run to test how long one epoch on wiki+BC+GB would take"
+# RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=3 "
+#         f" --DIR=combo"
+#             f" --run_name={current_run_name}"
+#             f' --description="{current_description}"'
+#             f" --flagfile=configs/base.txt"
+#             f" --learning_rate=10e-6"
+#             f" --num_epochs=5"
+#             f" --patience=6"
+#             f" --num_serialized_models_to_keep=1"
+#         f" --alternate_internal_prediction",
+#
+#             # f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             # f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#             # f' --overrides "run_name={current_run_name}"; cd ..'
+#         ],
+#     'description': current_description,
+#     'server': current_server}
+
+current_server = 'rose'
+current_lambda = 1
+current_run_name = f"lambda_{current_lambda}_HFpretrain"
+current_description = "Part of set of runs that test whether adding the DIR objective improves performance at _a_ fraction"
 RUNS[current_run_name] = {'commands': [
         f"ssh {current_server}",
 
         f"python pretrain.py --max_GPUs=1 --d_batch=3 "
         f" --DIR=combo"
-            f" --run_name={current_run_name}"
-            f' --description="{current_description}"'
-            f" --flagfile=configs/base.txt"
-            f" --learning_rate=10e-6"
-            f" --num_epochs=5"
-            f" --patience=6"
-            f" --num_serialized_models_to_keep=1"
-        f" --alternate_internal_prediction",
+        f" --run_name={current_run_name}"
+        f' --description="{current_description}"'
+        f" --flagfile=configs/base.txt"
+        f" --use_HFpretrained_weights"
+        f" --learning_rate=10e-6"
+        f" --num_epochs=5"
+        f" --patience=6"
+        f" --num_serialized_models_to_keep=1"
+        f" --alternate_internal_prediction"
+        f" --old_pretrain_data"
+        f" --DIR_loss_fraction = {current_lambda}",
 
-            f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-            f' --pretrained_model={current_run_name} --max_GPUs=1 '
-            f' --overrides "run_name={current_run_name}"; cd ..'
+        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+        f' --pretrained_model={current_run_name} --max_GPUs=1 '
+        f' --overrides "run_name={current_run_name}"; cd ..'
         ],
     'description': current_description,
     'server': current_server}

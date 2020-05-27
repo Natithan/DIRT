@@ -30,16 +30,9 @@ log.basicConfig(
     format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
 )  # noqa
 
-def get_loader(dataset, distributed):
-    if distributed:
-        sampler = DistributedSampler(dataset, shuffle=True) # Shuffle needed for negative sampling
-        return DataLoader(dataset,
-                            batch_size=FLAGS.d_batch,
-                            sampler=sampler)
-    else:
-        return DataLoader(dataset,
-                            batch_size=FLAGS.d_batch,
-                            shuffle=True)
+def get_loader(dataset):
+    return DataLoader(dataset,
+                        batch_size=FLAGS.d_batch,)
 
 
 def main(_):
@@ -71,7 +64,10 @@ def main(_):
     open(flagfile, "x")
     FLAGS.append_flags_into_file(flagfile)
 
-    data_dict = get_data_dict_old()
+    if FLAGS.old_pretrain_data:
+        data_dict = get_data_dict_old()
+    else:
+        data_dict = get_data_dict()
     train_dataset, test_dataset, val_dataset = (data_dict[key] for key in
                                                        ('train', 'test', 'val'))
     model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model])
@@ -79,7 +75,7 @@ def main(_):
     model.cuda(FLAGS.device_idxs[0])
 
     log.info("Evaluating pretraining performance on test split")
-    test_loader = get_loader(test_dataset, distributed=False)
+    test_loader = get_loader(test_dataset)
     model.eval()
     batch_generator = iter(test_loader)
     batch_generator = Tqdm.tqdm(
@@ -117,8 +113,8 @@ def train(rank,world_size,model, run_dir, train_dataset, val_dataset):
     log.info(f"Using GPU {cuda_id} from GPUs {FLAGS.device_idxs}")
     model.cuda(cuda_id)
     optimizer = optim.Adam(model.parameters(), lr=FLAGS.learning_rate)
-    loader = get_loader(train_dataset, distributed)
-    val_loader = get_loader(val_dataset, distributed)
+    loader = get_loader(train_dataset)
+    val_loader = get_loader(val_dataset)
     checkpointer = MyCheckpointer(serialization_dir=run_dir,
                                 num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep)
     trainer = MyTrainer(model=model,

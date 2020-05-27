@@ -106,6 +106,13 @@ class DIRTLMHead(Model):
 
         # ENCODING
         clean = (FLAGS.DIR != 'combo') or self.finetune_stage
+        if FLAGS.DIR == 'combo':
+            normalizer = FLAGS.nb_encoder_layers - FLAGS.top_down_distance
+
+            if FLAGS.alternate_internal_prediction:
+                self.learn_phase = not self.learn_phase
+        else:
+            normalizer = FLAGS.nb_encoder_layers
         if clean:
             encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],clean=clean)
         else:
@@ -119,13 +126,7 @@ class DIRTLMHead(Model):
                                    learn_phase=self.learn_phase)
         embedded_inputs = self.embedder(input_ids,token_type_ids)
         encoded, _, cum_layer_loss, layer_loss_list = encoder(embedded_inputs, padding_mask)
-        if FLAGS.DIR == 'combo':
-            normalizer = FLAGS.nb_encoder_layers - FLAGS.top_down_distance
 
-            if FLAGS.alternate_internal_prediction:
-                self.learn_phase = not self.learn_phase
-        else:
-            normalizer = FLAGS.nb_encoder_layers
         cum_layer_loss = cum_layer_loss / normalizer  # Normalize layer loss by number of times it is calculated
         result_dict = {}
         result_dict['encoded_activations'] = encoded
@@ -142,10 +143,12 @@ class DIRTLMHead(Model):
 
             self.metrics_dict['crossentropy_loss'] = MLM_loss.item()
             self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
-            self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
-                                                                                torch.Tensor) else cum_layer_loss
-            for layer, loss in enumerate(layer_loss_list):
-                self.metrics_dict[f'DIR_loss_layer_{layer}'] = loss.item() if isinstance(loss,
+
+            if self.learn_phase:
+                self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
+                                                                                    torch.Tensor) else cum_layer_loss
+                for layer, loss in enumerate(layer_loss_list):
+                    self.metrics_dict[f'DIR_loss_layer_{layer}'] = loss.item() if isinstance(loss,
                                                                                 torch.Tensor) else loss
 
         result_dict['vocab_scores'] = vocab_scores
@@ -202,7 +205,6 @@ class FeedForwardBlock(nn.Module):
         self.activation = get_activation()
         self.linear_out = nn.Linear(FLAGS.d_ff, FLAGS.d_hidden)
         self.LayerNorm = InternalLayerNorm(FLAGS.d_hidden)
-        self.dropout = MyDropout()
 
     def forward(self, hidden_in):
         result = self.linear_out(self.activation(self.linear_in(hidden_in)))
@@ -213,7 +215,6 @@ class EncoderBlock(nn.Module):
     def __init__(self,finetune_stage=False):
         super().__init__()
         self.multihead_attention = MultiHeadAttention(finetune_stage=finetune_stage)
-        # Dropout after every feedforward layer
         self.feedforward = FeedForwardBlock()
         self.finetune_stage = finetune_stage
         if FLAGS.DIR == 'top_down':
@@ -278,7 +279,7 @@ class MySequential(nn.Sequential): #TODO move this to a for loop in enclosing mo
                 combined_prediction = self.combiner(torch.cat((top_down_prediction,from_left_prediction,from_right_prediction),
                                                               dim=-1))
                 # The first and last sequence elements don't have proper left resp. right inputs.
-                # Don't consider these in calculating the loss TODO if use prediction at inference: watch out with using these positions
+                # Don't consider these in calculating the loss
                 edge_mask = torch.zeros_like(DIRT_mask)
                 edge_mask[0] = True
                 edge_mask[-1] = True

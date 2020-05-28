@@ -40,9 +40,10 @@ class SingleDataset():
         self.token_indexer = get_my_tokenizer()
 
     def get_data(self):
-        splitname_no_mini = self.split_name.split("_")[0]
+        actual_split = self.split_name.split("_")[1]
+        assert actual_split in ['train', 'test', 'val']
 
-        split_names = [self.split_name.replace(splitname_no_mini,s) for s in ['train','test','val']]
+        split_names = [self.split_name.replace(actual_split, s) for s in ['train', 'test', 'val']]
         split_paths = [Path(FLAGS.blob_folder, f'{self.corpus}_{sn}_ids_tensor').as_posix()
                        for sn in split_names]
         assert self.id_tensor_path in split_paths, f"{self.id_tensor_path} is not path of {split_paths}, check spelling"
@@ -71,18 +72,19 @@ class SingleDataset():
         return split_tensor
 
     def get_full_tensor(self):
-        log.info(f"Loading {self.corpus} text data from {self.text_path}.")
+        log.info(f"Loading a fraction {FLAGS.pretrain_data_fraction} of {self.corpus} text data from {self.text_path}.")
         tensor_list = []
-        for i, path in tqdm(enumerate(glob.glob(corpus_to_data[self.corpus]))):
-            if FLAGS.mini:
-                if i > 1:
+        all_text_files = glob.glob(corpus_to_data[self.corpus])
+        for i, path in tqdm(enumerate(all_text_files)):
+            if self.corpus in ['wiki','gutenberg']:
+                if i > len(all_text_files)*FLAGS.pretrain_data_fraction:
                     break
-            tensor_list += self.text_to_tensor_row(path)
+            tensor_list += self.text_to_tensor_rows(path)
         full_tensor = torch.cat(tensor_list)
 
         return full_tensor
 
-    def text_to_tensor_row(self, path):
+    def text_to_tensor_rows(self, path):
         token_ids_units = []
         log.disable(log.WARNING)
         if self.corpus == 'wiki':
@@ -91,10 +93,11 @@ class SingleDataset():
             token_ids_units += unflattened_ids
         elif self.corpus == 'bookcorpus':
             paragraph = ""
-            for i, line in tqdm(enumerate(open(path).read().splitlines())):
-                if FLAGS.mini:
-                    if i > 1000:
-                        break
+            full_file = open(path).read().splitlines()
+            full_length = len(full_file)
+            for i, line in tqdm(enumerate(full_file)):
+                if i > full_length * FLAGS.pretrain_data_fraction:
+                    break
                 line = " ".join(line.strip().split())
                 paragraph += line + " "
                 if line == "":
@@ -116,7 +119,7 @@ class SingleDataset():
                                                                         pad_to_max_length=True)['input_ids']
                 tensor_list.append(torch.tensor(current_sequence).unsqueeze(
                     0))
-        return [torch.cat(tensor_list)]
+        return [torch.cat(tensor_list).to(torch.int32)]
 
 
 
@@ -138,14 +141,13 @@ class CombinedSplitDataset(IterableDataset):
         assert chunk_paths, f"{self.split_chunks_folder} is empty!"
         while chunk_paths:
             chunk_path = chunk_paths.pop(random.randrange(len(chunk_paths)))
-            chunk_data = torch.load(chunk_path.as_posix())
+            chunk_data = torch.load(chunk_path.as_posix()).to(torch.int64) # Needs to be torch.long for downstream, but storing as int32 because uses less space
             chunk_data = chunk_data[torch.randperm(len(chunk_data))]
             for row in chunk_data:
                 yield row
 
     def __len__(self):
-        maybe_mini = '_mini' if FLAGS.mini else ''
-        length_blob_path = Path(FLAGS.blob_folder, f'{self.split_name}_tensor_combined{maybe_mini}_length').as_posix()
+        length_blob_path = Path(FLAGS.blob_folder, f'{self.split_name}_tensor_combined_length').as_posix()
         if os.path.exists(length_blob_path) and not FLAGS.fresh_data:
             length = torch.load(length_blob_path,map_location='cpu')
         else:
@@ -182,10 +184,8 @@ def get_data_dict():
     if not os.path.exists(blob_dir_path):
         os.mkdir(blob_dir_path)
 
-    maybe_mini = '_mini' if FLAGS.mini else ''
-    train_dataset = CombinedSplitDataset(f'train{maybe_mini}_{FLAGS.max_seq_length}')
-    test_dataset = CombinedSplitDataset(f'test{maybe_mini}_{FLAGS.max_seq_length}')
-    val_dataset = CombinedSplitDataset(f'val{maybe_mini}_{FLAGS.max_seq_length}')
+    train_dataset, test_dataset, val_dataset = [CombinedSplitDataset(f'{FLAGS.pretrain_data_fraction}_{split}_{FLAGS.max_seq_length}')
+                                                for split in ['train','test','val']]
     return {"train": train_dataset,
             "test": test_dataset,
             "val": val_dataset}
@@ -281,12 +281,16 @@ def get_data_dict_old():
             "val": val_dataset}
 
 def split_into_chunks(split_name,split_tensor):
-    nb_chunks = 100
-    step = len(split_tensor) // nb_chunks
+    chunk_size_MiB = 500 # Size of chunks to load into memory at once, in MiB
+    B_per_el = split_tensor.element_size()
+    nb_cols = split_tensor.shape[-1]
+    B_per_MiB = 2 ** 20
+    els_per_chunk = ((chunk_size_MiB * B_per_MiB) / B_per_el)
+    rows_per_chunk = int(els_per_chunk / nb_cols)
     split_dir = Path(FLAGS.blob_folder, split_name)
     Path.mkdir(split_dir)
-    for i in range(nb_chunks):
-        chunk = split_tensor[i * step:min((i + 1) * step, len(split_tensor))].clone()
+    for i in range(0,len(split_tensor),rows_per_chunk):
+        chunk = split_tensor[i:i + rows_per_chunk].clone()
         path = Path(split_dir, f'{i}.pt').as_posix()
         torch.save(chunk, path)
         del chunk

@@ -33,7 +33,6 @@ flags.DEFINE_integer("model_save_interval", 300, "Number of seconds after which 
 flags.DEFINE_integer("num_serialized_models_to_keep", 1, "Number of serialized trained models to store.")
 flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
 flags.DEFINE_string("mode", "", "Flag to allow python console command line argument")
-flags.DEFINE_bool("mini", False, "Whether to work with mini data for debugging purposes")
 flags.DEFINE_string("pretrain_data_folder", Path(READ_ONLY_ROOT,"data/pretraining").as_posix(), "Folder with subfolders corresponding to different dataset to all use as pretraining data")
 flags.DEFINE_float("pretrain_data_fraction",0.1,"Fraction of the total data available in the pretraining corpora to use during pretraining."
                                                 "Added because training on all available data takes too long with 1 GPU")

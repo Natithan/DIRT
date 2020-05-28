@@ -35,6 +35,8 @@ flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
 flags.DEFINE_string("mode", "", "Flag to allow python console command line argument")
 flags.DEFINE_bool("mini", False, "Whether to work with mini data for debugging purposes")
 flags.DEFINE_string("pretrain_data_folder", Path(READ_ONLY_ROOT,"data/pretraining").as_posix(), "Folder with subfolders corresponding to different dataset to all use as pretraining data")
+flags.DEFINE_float("pretrain_data_fraction",0.1,"Fraction of the total data available in the pretraining corpora to use during pretraining."
+                                                "Added because training on all available data takes too long with 1 GPU")
 flags.DEFINE_string("output_folder", Path(WRITE_ROOT,"output","pretraining").as_posix(), "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
                     "Folder with trained models and tensorboard logs")

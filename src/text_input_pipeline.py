@@ -79,32 +79,6 @@ class SingleDataset():
                     break
             tensor_list += self.text_to_tensor_row(path)
         full_tensor = torch.cat(tensor_list)
-        # if self.name == 'bookcorpus':
-        #     l = []
-        #     for i, line in tqdm(enumerate(open(BOOKCORPUS_DATA_PATH).read().splitlines())):
-        #         if FLAGS.mini:
-        #             if i > mini_amount:
-        #                 break
-        #         line = " ".join(line.strip().split())
-        #         paragraph += line + " "
-        #         if line == "":
-        #             l += [{"id": i, "text": paragraph}]
-        #             paragraph = ""
-        #     full_df = pd.DataFrame(l)
-        #     del l
-        # elif self.name == 'wiki':
-        #     l = []
-        #     for i, path in tqdm(enumerate(glob.glob(WIKI_DATA_PATH))):
-        #         if FLAGS.mini:
-        #             if i > mini_amount:
-        #                 break
-        #         l += [pd.read_json(path)]
-        #     full_df = pd.concat(l)
-        # elif self.name == 'gutenberg':
-        #     for i, path in tqdm(enumerate(glob.glob(WIKI_DATA_PATH))):
-        #         with open(path,'r') as f:
-        #             whole_book = f.read()
-        #         l += [{"id": i, "text": whole_book}]
 
         return full_tensor
 
@@ -144,15 +118,6 @@ class SingleDataset():
                     0))
         return [torch.cat(tensor_list)]
 
-
-class ChunkDataSet(IterableDataset):
-    def __init__(self,chunk_path):
-        self.data = torch.load(chunk_path.as_posix())
-        self.data = self.data[torch.randperm(len(self.data))]
-
-    def __iter__(self):
-        for row in self.data:
-            yield row
 
 
 class CombinedSplitDataset(IterableDataset):
@@ -294,12 +259,9 @@ def get_data_dict_old():
     if not os.path.exists(blob_dir_path):
         os.mkdir(blob_dir_path)
     maybe_mini = '_mini' if FLAGS.mini else ''
-    train_dataset = GutenbergSplitDataset(Path(FLAGS.pretrain_data_folder, 'train').as_posix(),
-                                          Path(blob_dir_path, f'train_tensor{maybe_mini}').as_posix())
-    test_dataset = GutenbergSplitDataset(Path(FLAGS.pretrain_data_folder, 'test').as_posix(),
-                                         Path(blob_dir_path, f'test_tensor{maybe_mini}').as_posix())
-    val_dataset = GutenbergSplitDataset(Path(FLAGS.pretrain_data_folder, 'val').as_posix(),
-                                        Path(blob_dir_path, f'val_tensor{maybe_mini}').as_posix())
+    train_dataset, test_dataset, val_dataset = [GutenbergSplitDataset(Path(FLAGS.pretrain_data_folder,'Gutenberg', split).as_posix(),
+                                          Path(blob_dir_path, f'{split}_tensor{maybe_mini}_{FLAGS.max_seq_length}').as_posix())
+                                                for split in ['train','test','val']]
 
     # To reduce validation time
     k = 5000

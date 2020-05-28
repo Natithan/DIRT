@@ -11,8 +11,8 @@ def drop(els):
     return els / 4
 d_hidden = 768
 d_ff = 4*d_hidden
-d_seq=128
-d_batch = 4
+d_seq=256
+d_batch = 5
 d_float = 4 #size in bytes
 nb_heads=12
 nb_layers = 12

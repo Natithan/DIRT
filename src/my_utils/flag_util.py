@@ -16,10 +16,13 @@ def get_freer_gpu():  # Source: https://discuss.pytorch.org/t/it-there-anyway-to
 
 def get_gpus_with_enough_memory():
     using_DIR = any([re.match("--DIR=.+", arg) is not None for arg in sys.argv])
-    minimum_memory = 11000 if using_DIR else 5000
+    minimum_memory = 6000 if using_DIR else 5000
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >tmp_GPUs_free_mem')
     memory_available = [int(x.split()[2]) for x in open('tmp_GPUs_free_mem', 'r').readlines()]
-    used_gpus = np.argwhere(np.array(memory_available) > minimum_memory).squeeze().tolist()
+    zipped = list(zip(memory_available, range(len(memory_available))))
+    zipped.sort(reverse=True) # As the minimum memory is just a guess, best to have the biggest at the front,
+    # for if not all gpus that beat the min requirements are actually used due to a small max_GPUs
+    used_gpus = [gpu for mem_available, gpu in zipped if mem_available > minimum_memory]
     if not isinstance(used_gpus, Iterable):
         used_gpus = [used_gpus]
     return used_gpus

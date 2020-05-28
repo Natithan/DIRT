@@ -1,6 +1,7 @@
 import time
 
 import libtmux
+from numpy.ma import arange
 from pathlib2 import Path
 import pickle
 import os.path
@@ -803,34 +804,39 @@ BASE_SERVER = "arwen"
 #     'server': current_server}
 
 current_server = 'rose'
-current_lambda = 1
-current_run_name = f"lambda_{current_lambda}_HFpretrain"
-current_description = "Part of set of runs that test whether adding the DIR objective improves performance at _a_ fraction"
-RUNS[current_run_name] = {'commands': [
-        f"ssh {current_server}",
+current_lambda = 0
+for current_server, current_lambda in zip(
+    # ['frodo','frodo','frodo','arwen','rose','rose'],
+    #     [0,.2,.4,.6,.8,1]
 
-        f"python pretrain.py --max_GPUs=1 --d_batch=3 "
-        f" --DIR=combo"
-        f" --run_name={current_run_name}"
-        f' --description="{current_description}"'
-        f" --flagfile=configs/base.txt"
-        f" --use_HFpretrained_weights"
-        f" --learning_rate=10e-6"
-        f" --num_epochs=5"
-        f" --patience=6"
-        f" --num_serialized_models_to_keep=1"
-        f" --alternate_internal_prediction"
-        f" --old_pretrain_data"
-        f" --DIR_loss_fraction = {current_lambda}",
+        [ 'frodo','frodo', 'rose', 'rose'],
+        [.2, .6, .8, 1]
+):
+    current_run_name = f"lambda_{current_lambda}_HFpretrain"
+    current_description = "Part of set of runs that test whether adding the DIR objective improves performance at _a_ fraction"
+    RUNS[current_run_name] = {'commands': [
+            f"ssh {current_server}",
 
-        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --pretrained_model={current_run_name} --max_GPUs=1 '
-        f' --overrides "run_name={current_run_name}"; cd ..'
-        ],
-    'description': current_description,
-    'server': current_server}
+            f"conda activate p1;python pretrain.py --max_GPUs=1 --d_batch=5 --max_seq_length=256 "
+            f" --DIR=combo"
+            f" --run_name={current_run_name}"
+            f' --description="{current_description}"'
+            f" --flagfile=configs/base.txt"
+            f" --use_HFpretrained_weights"
+            f" --learning_rate=10e-6"
+            f" --num_epochs=5"
+            f" --patience=6"
+            f" --num_serialized_models_to_keep=1"
+            f" --alternate_internal_prediction"
+            f" --old_pretrain_data"
+            f" --DIR_loss_fraction={current_lambda}",
 
-
+            f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+            f' --pretrained_model={current_run_name} --max_GPUs=1 '
+            f' --overrides "run_name={current_run_name}"; cd ..'
+            ],
+        'description': current_description,
+        'server': current_server}
 server = libtmux.Server()
 session = server.find_where({"session_name": "exps"})
 assert session is not None, "Don't forget to start a tmux session"
@@ -927,7 +933,10 @@ for run_name, run_values in RUNS.items():
     print(f"Sending following commands to window  {w['window_name']} : {';'.join(commands)}")
     for command in commands:
         if 'ssh' in command:
-            if command == f'ssh {HOSTNAME}':  # Don't ssh extra to a host we're already on
+            pane.send_keys('hostname')
+            time.sleep(1)  # Wait for the output to be printed
+            current_host = pane.cmd('capture-pane', '-p').stdout[-2]
+            if command == f'ssh {current_host}':  # Don't ssh extra to a host we're already on
                 continue
             else:
                 pane.send_keys(command)

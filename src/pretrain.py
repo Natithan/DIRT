@@ -19,7 +19,7 @@ from config import FLAGS, process_flags
 import numpy as np
 
 from text_input_pipeline import get_data_dict, get_data_dict_old
-from allennlp.training import Checkpointer
+# from allennlp.training import Checkpointer
 
 from my_trainer import MyTrainer, MyCheckpointer
 from my_utils.util import cleanup, setup

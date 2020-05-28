@@ -79,6 +79,10 @@ class DIRTLMHead(Model):
         pattern = re.compile("|".join(repl.keys()))
         updated_hf_state_dict = OrderedDict(
             (pattern.sub(lambda m: repl[re.escape(m.group(0))], k), v) for k, v in hf_state_dict.items())
+        # Allow for cutting the sequence length short
+        updated_hf_state_dict['embedder.position_embeddings.weight'] = updated_hf_state_dict[
+                                                                           'embedder.position_embeddings.weight'][
+                                                                       :FLAGS.max_seq_length, :].clone()
         missing, unexpected = self.load_state_dict(updated_hf_state_dict,strict=False)
         # Allowed discrepancies: don't care about pooler, and have optional relative attention bias, + there is a 'lm_head.bias' that is only used to set lm head decoder bias to zero, which I' currently ignoring :P
         ignored_hf_parameters = [

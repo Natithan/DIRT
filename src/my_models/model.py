@@ -20,6 +20,7 @@ from constants import TYPE_VOCAB_SIZE
 from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss, get_activation, \
     sizeof_fmt, sz
 import logging as log
+
 log.basicConfig(
     format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
 )  # noqa
@@ -34,7 +35,7 @@ class DIRTLMHead(Model):
         self.embedder = AlbertEmbedder()
         self.shared_encoder_block = EncoderBlock(finetune_stage)
         if FLAGS.DIR == 'combo':
-            self.combiner = nn.Linear(3*FLAGS.d_hidden,FLAGS.d_hidden)
+            self.combiner = nn.Linear(3 * FLAGS.d_hidden, FLAGS.d_hidden)
             self.shared_top_down_predictor = nn.Sequential(
                 nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
                 get_activation(),
@@ -59,15 +60,20 @@ class DIRTLMHead(Model):
         if FLAGS.use_HFpretrained_weights:
             self.load_HFpretrained_weights()
 
+        if FLAGS.freeze_main_model:
+            self.embedder.requires_grad = False
+            self.shared_encoder_block.requires_grad = False
+            self.lm_head.requires_grad = False
+
     def load_HFpretrained_weights(self):
         hf_state_dict = AlbertForMaskedLM.from_pretrained(FLAGS.hf_model_handle).state_dict()
         repl = {"albert.embeddings": 'embedder',
-                'word_embeddings':'idx_to_embedding',
+                'word_embeddings': 'idx_to_embedding',
                 'albert.encoder.embedding_hidden_mapping_in': 'embedder.embedding_to_hidden',
                 'albert.encoder.albert_layer_groups.0.albert_layers.0': 'shared_encoder_block',
                 'attention.dense': 'multihead_attention.project_o',
                 'attention': 'multihead_attention',
-                'full_layer_layer_norm':'feedforward.LayerNorm',
+                'full_layer_layer_norm': 'feedforward.LayerNorm',
                 'query': 'project_q',
                 'key': 'project_k',
                 'value': 'project_v',
@@ -83,7 +89,7 @@ class DIRTLMHead(Model):
         updated_hf_state_dict['embedder.position_embeddings.weight'] = updated_hf_state_dict[
                                                                            'embedder.position_embeddings.weight'][
                                                                        :FLAGS.max_seq_length, :].clone()
-        missing, unexpected = self.load_state_dict(updated_hf_state_dict,strict=False)
+        missing, unexpected = self.load_state_dict(updated_hf_state_dict, strict=False)
         # Allowed discrepancies: don't care about pooler, and have optional relative attention bias, + there is a 'lm_head.bias' that is only used to set lm head decoder bias to zero, which I' currently ignoring :P
         ignored_hf_parameters = [
             'pooler',
@@ -92,7 +98,7 @@ class DIRTLMHead(Model):
         allowed_from_scratch_params = [
             'relative_attention_bias',
             'top_down_regressor',
-            'combiner','shared_top_down_predictor','shared_from_left_predictor','shared_from_right_predictor'
+            'combiner', 'shared_top_down_predictor', 'shared_from_left_predictor', 'shared_from_right_predictor'
 
         ]
         for m in missing:
@@ -100,35 +106,38 @@ class DIRTLMHead(Model):
                 raise ValueError(f'Unexpected mismatch in loading state dict: {m} not present in pretrained.')
         for u in unexpected:
             if not any([s in u for s in ignored_hf_parameters]):
-                raise ValueError(f'Unexpected mismatch in loading state dict: {u} in pretrained but not in current model.')
+                raise ValueError(
+                    f'Unexpected mismatch in loading state dict: {u} in pretrained but not in current model.')
         log.info(f"Loaded pretrained weights from {FLAGS.hf_model_handle}")
 
     def get_metrics(self, **kwargs):
-        return self.metrics_dict.copy() # copy needed to avoid overlapping train and validation metrics
+        return self.metrics_dict.copy()  # copy needed to avoid overlapping train and validation metrics
 
-    def forward(self, input_ids, padding_mask, masked_lm_labels=None,token_type_ids=None):
+    def forward(self, input_ids, padding_mask, masked_lm_labels=None, token_type_ids=None):
 
         # ENCODING
-        clean = (FLAGS.DIR != 'combo') or self.finetune_stage
+        clean = (FLAGS.DIR != 'combo') or (self.finetune_stage and not FLAGS.replace_self_predictions)
         if FLAGS.DIR == 'combo':
             normalizer = FLAGS.nb_encoder_layers - FLAGS.top_down_distance
 
-            if FLAGS.alternate_internal_prediction:
+            if FLAGS.replace_self_predictions == 'alternate':
                 self.learn_phase = not self.learn_phase
+            elif FLAGS.replace_self_predictions == 'always':
+                self.learn_phase = False
         else:
             normalizer = FLAGS.nb_encoder_layers
         if clean:
-            encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],clean=clean)
+            encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)], clean=clean)
         else:
 
             encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],
-                               top_down=self.shared_top_down_predictor,
-                               from_left=self.shared_from_left_predictor,
-                               from_right=self.shared_from_right_predictor,
-                               combiner=self.combiner,
-                               clean=clean,
+                                   top_down=self.shared_top_down_predictor,
+                                   from_left=self.shared_from_left_predictor,
+                                   from_right=self.shared_from_right_predictor,
+                                   combiner=self.combiner,
+                                   clean=clean,
                                    learn_phase=self.learn_phase)
-        embedded_inputs = self.embedder(input_ids,token_type_ids)
+        embedded_inputs = self.embedder(input_ids, token_type_ids)
         encoded, _, cum_layer_loss, layer_loss_list = encoder(embedded_inputs, padding_mask)
 
         cum_layer_loss = cum_layer_loss / normalizer  # Normalize layer loss by number of times it is calculated
@@ -137,7 +146,7 @@ class DIRTLMHead(Model):
 
         vocab_scores = self.lm_head(encoded)
 
-        if (masked_lm_labels is not None) and (not self.finetune_stage):
+        if masked_lm_labels is not None:
             targets = process_targets_for_loss(masked_lm_labels)
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, get_my_tokenizer().vocab_size)
             MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
@@ -148,12 +157,12 @@ class DIRTLMHead(Model):
             self.metrics_dict['crossentropy_loss'] = MLM_loss.item()
             self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
 
-            if FLAGS.DIR and self.learn_phase:
+            if FLAGS.DIR:
                 self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
                                                                                     torch.Tensor) else cum_layer_loss
                 for layer, loss in enumerate(layer_loss_list):
                     self.metrics_dict[f'DIR_loss_layer_{layer}'] = loss.item() if isinstance(loss,
-                                                                                torch.Tensor) else loss
+                                                                                             torch.Tensor) else loss
 
         result_dict['vocab_scores'] = vocab_scores
 
@@ -185,7 +194,8 @@ class LMHead(nn.Module):
         super().__init__()
         self.dense = nn.Linear(FLAGS.d_hidden, FLAGS.d_emb)
         self.LayerNorm = nn.LayerNorm(FLAGS.d_emb)
-        self.decoder = nn.Linear(FLAGS.d_emb, get_my_tokenizer().vocab_size) #TODO add activation here for consistency with ALBERT
+        self.decoder = nn.Linear(FLAGS.d_emb,
+                                 get_my_tokenizer().vocab_size)  # TODO add activation here for consistency with ALBERT
         self.activation = get_activation()
 
     def forward(self, hidden_states):
@@ -216,29 +226,31 @@ class FeedForwardBlock(nn.Module):
 
 
 class EncoderBlock(nn.Module):
-    def __init__(self,finetune_stage=False):
+    def __init__(self, finetune_stage=False):
         super().__init__()
         self.multihead_attention = MultiHeadAttention(finetune_stage=finetune_stage)
         self.feedforward = FeedForwardBlock()
         self.finetune_stage = finetune_stage
         if FLAGS.DIR == 'top_down':
             self.top_down_regressor = nn.Sequential(
-                nn.Linear(FLAGS.d_hidden,FLAGS.d_top_down),
-                nn.Linear(FLAGS.d_top_down,FLAGS.d_hidden),
+                nn.Linear(FLAGS.d_hidden, FLAGS.d_top_down),
+                nn.Linear(FLAGS.d_top_down, FLAGS.d_hidden),
             )
             # self.top_down_regressor = nn.Sequential()
+
     def forward(self, in_state, padding_mask,
-                cum_layer_loss=0,layer_loss_list=[]):
+                cum_layer_loss=0, layer_loss_list=[]):
         attention_output_dict = self.multihead_attention(in_state, in_state, padding_mask)
         att_out = attention_output_dict['activations']
         out_state = self.feedforward(att_out)
 
         # Top-down regression
-        if not self.finetune_stage: #TODO make sure it doesn't use all the extra mem here
+        if not self.finetune_stage:  # TODO make sure it doesn't use all the extra mem here
             if FLAGS.DIR == 'top_down':
                 masked_in_state, mask = apply_sequence_mask(in_state)
                 masked_att_out = self.multihead_attention(masked_in_state, in_state, padding_mask)['activations']
-                masked_out_state = self.feedforward(masked_att_out) #TODO should add activation? And should add sometimes-not-masking?
+                masked_out_state = self.feedforward(
+                    masked_att_out)  # TODO should add activation? And should add sometimes-not-masking?
                 predicted_in_state = self.top_down_regressor(masked_out_state)
                 layer_loss = contrastive_L2_loss(in_state, predicted_in_state, mask)
             elif FLAGS.DIR == 'from_projection':
@@ -251,11 +263,13 @@ class EncoderBlock(nn.Module):
         return out_state, padding_mask, layer_loss + cum_layer_loss, layer_loss_list
 
 
-class MySequential(nn.Sequential): #TODO move this to a for loop in enclosing module
+class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing module
     '''
     Allows Sequential to pass on multiple in- and outputs
     '''
-    def __init__(self,*args,top_down=None,from_left=None,from_right=None,combiner=None,clean=True,learn_phase=True):
+
+    def __init__(self, *args, top_down=None, from_left=None, from_right=None, combiner=None, clean=True,
+                 learn_phase=True):
         super().__init__(*args)
         self.clean = clean
         self.learn_phase = learn_phase
@@ -264,46 +278,48 @@ class MySequential(nn.Sequential): #TODO move this to a for loop in enclosing mo
             self.from_left_predictor = from_left
             self.from_right_predictor = from_right
             self.combiner = combiner
+            for p in [self.top_down_predictor, self.from_left_predictor, self.from_right_predictor,
+                      self.combiner]:
+                p.requires_grad = learn_phase
 
     def forward(self, *inputs):
         layers = self[:FLAGS.nb_encoder_layers]
         cum_layer_loss = 0
         layer_loss_list = []
-        for layer_idx, module in enumerate(layers): #TODO fix heavy mem overhead
+        for layer_idx, module in enumerate(layers):  # TODO fix heavy mem overhead
             if FLAGS.DIR == 'combo' and (layer_idx + FLAGS.top_down_distance < len(layers)) and (not self.clean):
                 in_activations, padding_mask = inputs[:2]
                 masked_inputs, DIRT_mask = apply_sequence_mask(in_activations)
-                contextualizer = layers[layer_idx:layer_idx + FLAGS.top_down_distance] #Clean true by default
-                top_down_inputs,_, _,_ = contextualizer(masked_inputs,padding_mask)
-                left_adjacent_inputs = in_activations.roll(shifts=1,dims=1)
-                right_adjacent_inputs = in_activations.roll(shifts=-1,dims=1)
-                top_down_prediction = self.top_down_predictor(top_down_inputs) # #TODO maybe add some dropout in dirt parts
+                contextualizer = layers[layer_idx:layer_idx + FLAGS.top_down_distance]  # Clean true by default
+                top_down_inputs, _, _, _ = contextualizer(masked_inputs, padding_mask)
+                left_adjacent_inputs = in_activations.roll(shifts=1, dims=1)
+                right_adjacent_inputs = in_activations.roll(shifts=-1, dims=1)
+                top_down_prediction = self.top_down_predictor(
+                    top_down_inputs)
                 from_left_prediction = self.from_left_predictor(left_adjacent_inputs)
                 from_right_prediction = self.from_right_predictor(right_adjacent_inputs)
-                combined_prediction = self.combiner(torch.cat((top_down_prediction,from_left_prediction,from_right_prediction),
-                                                              dim=-1))
+                combined_prediction = self.combiner(
+                    torch.cat((top_down_prediction, from_left_prediction, from_right_prediction),
+                              dim=-1))
                 # The first and last sequence elements don't have proper left resp. right inputs.
                 # Don't consider these in calculating the loss
                 edge_mask = torch.zeros_like(DIRT_mask)
                 edge_mask[0] = True
                 edge_mask[-1] = True
                 DIRT_mask = DIRT_mask | edge_mask
-                if self.learn_phase:
-                    layer_loss = contrastive_L2_loss(in_activations, combined_prediction, DIRT_mask)
-                    cum_layer_loss += layer_loss
-                    layer_loss_list.append(layer_loss)
-                else:
-                    inputs = (torch.where(DIRT_mask[None,:,None],inputs[0],combined_prediction),) + inputs[1:]
 
-
-
+                layer_loss = contrastive_L2_loss(in_activations, combined_prediction, DIRT_mask)
+                cum_layer_loss += layer_loss
+                layer_loss_list.append(layer_loss)
+                if not self.learn_phase:  # Wipe some internal states and replace them with predictions
+                    inputs = (torch.where(DIRT_mask[None, :, None], inputs[0], combined_prediction),) + inputs[1:]
 
             if type(inputs) == tuple:
                 inputs = module(*inputs)
             else:
                 inputs = module(inputs)
         if (not self.clean) and FLAGS.DIR == 'combo':
-            inputs = inputs[:2] +(cum_layer_loss,) + (layer_loss_list,)
+            inputs = inputs[:2] + (cum_layer_loss,) + (layer_loss_list,)
         return inputs
 
 
@@ -324,7 +340,8 @@ class Anticipation(nn.Module):
         anticipation_input = torch.cat((stacked_q, stacked_k, stacked_v),
                                        dim=1)  # [d_batch x nb_heads, 3 x d_head, d_seq]
         # Transpose: make sure d_head-dimension is at the last place for nn.Linear
-        projected_input = self.projector(anticipation_input.transpose(1, 2)).transpose(1,2)  # [d_batch x nb_heads, d_head, d_seq]
+        projected_input = self.projector(anticipation_input.transpose(1, 2)).transpose(1,
+                                                                                       2)  # [d_batch x nb_heads, d_head, d_seq]
 
         masked_pos_embeddings, mask = apply_sequence_mask(position_embeddings)
         predicted_state_stacked = projected_input.bmm(masked_pos_embeddings)  # [d_batch x nb_heads, d_head, d_seq]
@@ -332,9 +349,10 @@ class Anticipation(nn.Module):
 
         return contrastive_L2_loss(original_state, predicted_state, mask)
 
+
 class MultiHeadAttention(nn.Module):
 
-    def __init__(self, use_causal_mask=False,finetune_stage=False):
+    def __init__(self, use_causal_mask=False, finetune_stage=False):
         super().__init__()
         # Only one big projection matrix is used, instead of a small projection matrix per head.
         # This is possible because in this implementation, the number of heads always needs to be a divisor of d_hidden
@@ -394,28 +412,35 @@ class MultiHeadAttention(nn.Module):
         # This reshaping slices the last dimension and stacks those slices along the first dimension
         # In the resulting first dimension, first come all slices from the first batch, then from the second, and so on
         # This is relevant for how to add the position embeddings: they are the same per batch, but not per slice
-        q_multi_parts = q.transpose(1,2).contiguous().view(d_batch * FLAGS.nb_heads, d_head_hidden, query_length).transpose(1,2) #Transpose: so each head has the first slice _of every sequence element_
-        k_multi_parts = k.transpose(1,2).contiguous().view(d_batch * FLAGS.nb_heads, d_head_hidden, value_length).transpose(1,2)
-        v_multi_parts = v.transpose(1,2).contiguous().view(d_batch * FLAGS.nb_heads, d_head_hidden, value_length).transpose(1,2)
+        q_multi_parts = q.transpose(1, 2).contiguous().view(d_batch * FLAGS.nb_heads, d_head_hidden,
+                                                            query_length).transpose(1,
+                                                                                    2)  # Transpose: so each head has the first slice _of every sequence element_
+        k_multi_parts = k.transpose(1, 2).contiguous().view(d_batch * FLAGS.nb_heads, d_head_hidden,
+                                                            value_length).transpose(1, 2)
+        v_multi_parts = v.transpose(1, 2).contiguous().view(d_batch * FLAGS.nb_heads, d_head_hidden,
+                                                            value_length).transpose(1, 2)
 
         att_weights = torch.bmm(q_multi_parts,
                                 k_multi_parts.transpose(1, 2))  # shape [d_batch x nb_heads, query_length, value_length]
-        att_weights /= math.sqrt(d_head_hidden) # Scaling to be in line with Albert (even if t5 didn't do this)
+        att_weights /= math.sqrt(d_head_hidden)  # Scaling to be in line with Albert (even if t5 didn't do this)
         if FLAGS.pos_embeddings == 'relative':
             pos_embeddings = self.select_pos_embeddings(query_length, value_length)
             batch_pos_embeddings = pos_embeddings.repeat(d_batch, 1, 1)
 
             att_weights += batch_pos_embeddings
 
-        att_weights += self.get_attention_mask(padding_mask, d_batch, query_length, value_length) #adding attention mask
+        att_weights += self.get_attention_mask(padding_mask, d_batch, query_length,
+                                               value_length)  # adding attention mask
 
         att_weights = nn.Softmax(dim=-1)(att_weights)
         att_weights = self.dropout(att_weights)
 
         att_output_multi_parts = torch.bmm(att_weights,
                                            v_multi_parts)  # [d_batch*num_heads,query_length, d_head_hidden] from [d_batch*num_heads, query_length, value_length] x [d_batch*num_heads,value_length, d_head_hidden]
-        att_output = att_output_multi_parts.transpose(1,2).contiguous().view(d_batch, FLAGS.d_hidden, query_length).transpose(1,2).contiguous() # Last contiguous to make sure mem calculations add up :P
-        att_output = self.project_o(att_output) # Ok THIS I did better than HF :D
+        att_output = att_output_multi_parts.transpose(1, 2).contiguous().view(d_batch, FLAGS.d_hidden,
+                                                                              query_length).transpose(1,
+                                                                                                      2).contiguous()  # Last contiguous to make sure mem calculations add up :P
+        att_output = self.project_o(att_output)  # Ok THIS I did better than HF :D
         result_dict['activations'] = self.LayerNorm(self.dropout(att_output) + replacees)  # Include skip-connection
 
         if FLAGS.DIR == 'from_projection' and (not self.finetune_stage):
@@ -426,8 +451,10 @@ class MultiHeadAttention(nn.Module):
 
     def select_pos_embeddings(self, query_length, value_length):
         rel_pos_indices = tensor(
-            [[q_idx - k_idx for k_idx in range(value_length)] for q_idx in range(query_length)]) # shape [nb_heads, query_length, value_length]
-        bucket_idxs = MultiHeadAttention._relative_position_bucket(rel_pos_indices).cuda(self.relative_attention_bias.weight.device)
+            [[q_idx - k_idx for k_idx in range(value_length)] for q_idx in
+             range(query_length)])  # shape [nb_heads, query_length, value_length]
+        bucket_idxs = MultiHeadAttention._relative_position_bucket(rel_pos_indices).cuda(
+            self.relative_attention_bias.weight.device)
         pos_embeddings = self.relative_attention_bias(bucket_idxs).permute(2, 0, 1)
         return pos_embeddings
 
@@ -484,11 +511,14 @@ class MultiHeadAttention(nn.Module):
         bucket_indices += torch.where(is_small, n, val_if_large)
         return bucket_indices
 
+
 class InternalLayerNorm(torch.nn.LayerNorm):
     # To be in accordance with HF Albert
-    def __init__(self,*args,**kwargs):
-        super().__init__(*args,**kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.eps = FLAGS.layernorm_eps
+
+
 class AlbertEmbedder(nn.Module):
     """
     Factorized embedder, as proposed in the ALBERT paper: http://arxiv.org/abs/1909.11942
@@ -504,7 +534,8 @@ class AlbertEmbedder(nn.Module):
         self.embedding_to_hidden = nn.Linear(FLAGS.d_emb, FLAGS.d_hidden)
         self.LayerNorm = InternalLayerNorm(FLAGS.d_emb)
         self.dropout = MyDropout()
-    def forward(self, ids,token_type_ids=None):
+
+    def forward(self, ids, token_type_ids=None):
         embedded = self.idx_to_embedding(ids)
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(ids)

@@ -889,7 +889,8 @@ RUNS[current_run_name] = {'commands': [
             f" --num_epochs=1"
             f" --patience=6"
             f" --num_serialized_models_to_keep=1"
-        f" --max_seq_length=256",
+        f" --max_seq_length=256"
+        f" --use_HFpretrained_weights",
 
             f'  cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
             f' --pretrained_model={current_run_name} --max_GPUs=1 '
@@ -898,32 +899,35 @@ RUNS[current_run_name] = {'commands': [
     'description': current_description,
     'server': current_server}
 
-# current_server = 'arwen'
-# current_run_name = "twoStep_SG_Bigdata_0.1_HFpretrain_mypretrain"
-# current_description = "Testing whether this setup can improve results: first training an internal predictor separately" \
-#                       " while freezing the main weights, then freezing the internal predictor, and using it to replace" \
-#                       " internal states DURING SG FINETUNING"
-# RUNS[current_run_name] = {'commands': [
-#         f"ssh {current_server}",
-#
-#         f"python pretrain.py --max_GPUs=1 --d_batch=8 "
-#             f" --run_name={current_run_name}"
-#             f' --description="{current_description}"'
-#             f" --flagfile=configs/base.txt"
-#             f" --learning_rate=10e-6"
-#             f" --num_epochs=1"
-#             f" --patience=6"
-#             f" --num_serialized_models_to_keep=1"
-#         f" --freeze_main_model" #TODO add to config and model
-#
-#
-#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-#             f' --pretrained_model={current_run_name} --max_GPUs=1 '
-#             f' --overrides "run_name={current_run_name}'
-#         f' --replace_self_predictions"; cd ..'  #TODO add to config and model
-#         ],
-#     'description': current_description,
-#     'server': current_server}
+current_server = 'arwen'
+current_run_name = "twoStep_SG_Bigdata_0.1_HFpretrain_mypretrain"
+current_description = "Testing whether this setup can improve results: first training an internal predictor separately" \
+                      " while freezing the main weights, then freezing the internal predictor, and using it to replace" \
+                      " internal states DURING SG FINETUNING"
+RUNS[current_run_name] = {'commands': [
+        f"ssh {current_server}",
+
+        f"python pretrain.py --max_GPUs=1 --d_batch=8 "
+            f" --run_name={current_run_name}"
+            f' --description="{current_description}"'
+            f" --flagfile=configs/base.txt"
+            f" --learning_rate=10e-6"
+            f" --num_epochs=1"
+            f" --patience=6"
+            f" --num_serialized_models_to_keep=1"
+        f" --max_seq_length=256"
+        f" --freeze_main_model"
+        f" --DIR=combo"
+        f" --use_HFpretrained_weights",
+
+
+            f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+            f' --pretrained_model={current_run_name} --max_GPUs=1 '
+            f' --overrides "run_name={current_run_name}'
+        f' --replace_self_predictions=always"; cd ..'
+        ],
+    'description': current_description,
+    'server': current_server}
 
 server = libtmux.Server()
 session = server.find_where({"session_name": "exps"})

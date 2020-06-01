@@ -258,9 +258,8 @@ def get_data_dict_old():
     blob_dir_path = Path(READ_ONLY_ROOT, 'blobs')
     if not os.path.exists(blob_dir_path):
         os.mkdir(blob_dir_path)
-    maybe_mini = '_mini' if FLAGS.mini else ''
     train_dataset, test_dataset, val_dataset = [GutenbergSplitDataset(Path(FLAGS.pretrain_data_folder,'Gutenberg', split).as_posix(),
-                                          Path(blob_dir_path, f'{split}_tensor{maybe_mini}_{FLAGS.max_seq_length}').as_posix())
+                                          Path(blob_dir_path, f'{split}_tensor_{FLAGS.max_seq_length}').as_posix())
                                                 for split in ['train','test','val']]
 
     # To reduce validation time

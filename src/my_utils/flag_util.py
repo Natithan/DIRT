@@ -16,7 +16,7 @@ def get_freer_gpu():  # Source: https://discuss.pytorch.org/t/it-there-anyway-to
 
 def get_gpus_with_enough_memory():
     using_DIR = any([re.match("--DIR=.+", arg) is not None for arg in sys.argv])
-    minimum_memory = 6000 if using_DIR else 5000
+    minimum_memory = 6000 if using_DIR else 4000
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >tmp_GPUs_free_mem')
     memory_available = [int(x.split()[2]) for x in open('tmp_GPUs_free_mem', 'r').readlines()]
     zipped = list(zip(memory_available, range(len(memory_available))))

@@ -148,7 +148,7 @@ class DIRTLMHead(Model):
             self.metrics_dict['crossentropy_loss'] = MLM_loss.item()
             self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
 
-            if self.learn_phase:
+            if FLAGS.DIR and self.learn_phase:
                 self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
                                                                                     torch.Tensor) else cum_layer_loss
                 for layer, loss in enumerate(layer_loss_list):

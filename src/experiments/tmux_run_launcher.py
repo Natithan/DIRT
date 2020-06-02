@@ -937,8 +937,8 @@ RUNS[current_run_name] = {'commands': [
 
             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
             f' --max_GPUs=1 '
-            f' --overrides "run_name={current_run_name}'
-            f'input_module=albert-base-v1"'
+            f' --overrides "run_name={current_run_name},'
+            f'input_module=albert-base-v1'
         f'"; cd ..'
         ],
     'description': current_description,

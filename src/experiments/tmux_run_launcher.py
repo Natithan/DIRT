@@ -928,52 +928,82 @@ BASE_SERVER = "arwen"
 #     'description': current_description,
 #     'server': current_server}
 
-current_server = 'frodo'
-current_run_name = "vanilla_Bigdata_0.1_HFpre_nomypre_noDrop"
-current_description = "An experiment focused only on finetuning stage: comparing whether using a trained self-predictor" \
-                      "as regularization improves over vanilla when dropout is disabled"
-RUNS[current_run_name] = {'commands': [
+# current_server = 'frodo'
+# current_run_name = "vanilla_Bigdata_0.1_HFpre_nomypre_noDrop"
+# current_description = "An experiment focused only on finetuning stage: comparing whether using a trained self-predictor" \
+#                       "as regularization improves over vanilla when dropout is disabled"
+# RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --max_GPUs=1 '
+#             f' --dropout_rate=0 '
+#             f' --overrides "run_name={current_run_name},'
+#             f'input_module=albert-base-v1'
+#         f'"; cd ..'
+#         ],
+#     'description': current_description,
+#     'server': current_server}
+#
+# current_server = 'frodo'
+# current_run_name = "self-predicting_Bigdata_0.1_HFpre_nomypre_noDrop"
+# current_description = "An experiment focused only on finetuning stage: comparing whether using a trained self-predictor" \
+#                       "as regularization improves over vanilla when dropout is disabled"
+# pretrained_model_path = "/cw/working-arwen/nathan/phd/output/pretraining/twoStep_SG_Bigdata_0.1_HFpretrain_mypretrain/best.th"
+# RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         # f"python pretrain.py --max_GPUs=1 --d_batch=8 "
+#         #     f" --run_name={current_run_name}"
+#         #     f' --description="{current_description}"'
+#         #     f" --flagfile=configs/base.txt"
+#         #     f" --learning_rate=10e-6"
+#         #     f" --num_epochs=1"
+#         #     f" --patience=6"
+#         #     f" --num_serialized_models_to_keep=1"
+#         # f" --max_seq_length=256"
+#         # f" --freeze_main_model"
+#         # f" --DIR=combo"
+#         # f" --use_HFpretrained_weights",
+#
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --max_GPUs=1'
+#             f' --dropout_rate=0 '
+#             f' --saved_pretrained_model_path={pretrained_model_path}'
+#             f' --overrides "run_name={current_run_name}'
+#         f'"; cd ..'
+#         ],
+#     'description': current_description,
+#     'server': current_server}
+
+for current_server, current_lambda in zip(
+        # ['frodo','frodo','frodo','arwen','rose','rose'],
+        #     [0,.2,.4,.6,.8,1]
+
+        ['frodo', 'frodo', 'bilbo', 'bilbo'],
+        [0, .2, .4, .6, .8]
+):
+    current_run_name = f"lambda_{current_lambda}_HFpretrain_WBG"
+    current_description = "Updated to work with wiki+bc+gb data: pretraining with different fractions lambda of" \
+                          " DIR loss objective, seeing if improvement at any lambda"
+    RUNS[current_run_name] = {'commands': [
         f"ssh {current_server}",
 
-            f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-            f' --max_GPUs=1 '
-            f' --overrides "run_name={current_run_name},'
-            f'input_module=albert-base-v1'
-        f'"; cd ..'
-        ],
-    'description': current_description,
-    'server': current_server}
+        f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+        f"--max_GPUs=1 --learning_rate=10e-6 --num_epochs=5 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+        f" --d_batch=5 --max_seq_length=256 "
+        f" --DIR=combo"
+        f" --alternate_internal_prediction"
+        f" --use_HFpretrained_weights"
+        f" --DIR_loss_fraction={current_lambda}",
 
-current_server = 'frodo'
-current_run_name = "self-predicting_Bigdata_0.1_HFpre_nomypre_noDrop"
-current_description = "An experiment focused only on finetuning stage: comparing whether using a trained self-predictor" \
-                      "as regularization improves over vanilla when dropout is disabled"
-pretrained_model_path = "/cw/working-arwen/nathan/phd/output/pretraining/twoStep_SG_Bigdata_0.1_HFpretrain_mypretrain/best.th"
-RUNS[current_run_name] = {'commands': [
-        f"ssh {current_server}",
-
-        # f"python pretrain.py --max_GPUs=1 --d_batch=8 "
-        #     f" --run_name={current_run_name}"
-        #     f' --description="{current_description}"'
-        #     f" --flagfile=configs/base.txt"
-        #     f" --learning_rate=10e-6"
-        #     f" --num_epochs=1"
-        #     f" --patience=6"
-        #     f" --num_serialized_models_to_keep=1"
-        # f" --max_seq_length=256"
-        # f" --freeze_main_model"
-        # f" --DIR=combo"
-        # f" --use_HFpretrained_weights",
-
-
-            f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-            f' --max_GPUs=1 '
-            f' --saved_pretrained_model_path={pretrained_model_path}'
-            f' --overrides "run_name={current_run_name}'
-        f'"; cd ..'
-        ],
-    'description': current_description,
-    'server': current_server}
+        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+        f' --pretrained_model={current_run_name} --max_GPUs=1 '
+        f' --overrides "run_name={current_run_name}"; cd ..'
+    ],
+        'description': current_description,
+        'server': current_server}
 
 
 def track_run_in_sheets(run_name, commands, description, server):
@@ -1004,7 +1034,6 @@ def track_run_in_sheets(run_name, commands, description, server):
 
     # The ID of the spreadsheet to update.
     spreadsheet_id = SPREADSHEET_ID
-
 
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     repo = git.Repo(search_parent_directories=True)
@@ -1049,6 +1078,7 @@ def track_run_in_sheets(run_name, commands, description, server):
     response = request.execute()
 
     pprint(response)
+
 
 server = libtmux.Server()
 session = server.find_where({"session_name": "exps"})

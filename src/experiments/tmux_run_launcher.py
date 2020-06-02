@@ -662,9 +662,7 @@ BASE_SERVER = "arwen"
 #     'description': current_description,
 #     'server': current_server}
 #
-# server = libtmux.Server()
-# session = server.find_where({"session_name": "exps"})
-# assert session is not None, "Don't forget to start a tmux session"
+
 
 # current_server = 'frodo'
 # current_run_name = "vanilla_HFpre_nomypre"
@@ -875,63 +873,107 @@ BASE_SERVER = "arwen"
 #         'description': current_description,
 #         'server': current_server}
 
+# current_server = 'frodo'
+# current_run_name = "vanilla_Bigdata_0.1_HFpre_mypre"
+# current_description = "Getting a pretrained baseline on a fraction of the shouldbe-better-domain-data that is small enough to train an epoch in 3 days"
+# RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         f"conda activate p1; python pretrain.py --max_GPUs=1 --d_batch=8 "
+#             f" --run_name={current_run_name}"
+#             f' --description="{current_description}"'
+#             f" --flagfile=configs/base.txt"
+#             f" --learning_rate=10e-6"
+#             f" --num_epochs=1"
+#             f" --patience=6"
+#             f" --num_serialized_models_to_keep=1"
+#         f" --max_seq_length=256"
+#         f" --use_HFpretrained_weights",
+#
+#             f'  cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#             f' --overrides "run_name={current_run_name}"; cd ..'
+#         ],
+#     'description': current_description,
+#     'server': current_server}
+
+# current_server = 'arwen'
+# current_run_name = "twoStep_SG_Bigdata_0.1_HFpretrain_mypretrain"
+# current_description = "Testing whether this setup can improve results: first training an internal predictor separately" \
+#                       " while freezing the main weights, then freezing the internal predictor, and using it to replace" \
+#                       " internal states DURING SG FINETUNING"
+# RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         f"python pretrain.py --max_GPUs=1 --d_batch=8 "
+#             f" --run_name={current_run_name}"
+#             f' --description="{current_description}"'
+#             f" --flagfile=configs/base.txt"
+#             f" --learning_rate=10e-6"
+#             f" --num_epochs=1"
+#             f" --patience=6"
+#             f" --num_serialized_models_to_keep=1"
+#         f" --max_seq_length=256"
+#         f" --freeze_main_model"
+#         f" --DIR=combo"
+#         f" --use_HFpretrained_weights",
+#
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#             f'  --replace_self_predictions=always'
+#             f' --overrides "run_name={current_run_name}'
+#         f'"; cd ..'
+#         ],
+#     'description': current_description,
+#     'server': current_server}
+
 current_server = 'frodo'
-current_run_name = "vanilla_Bigdata_0.1_HFpre_mypre"
-current_description = "Getting a pretrained baseline on a fraction of the shouldbe-better-domain-data that is small enough to train an epoch in 3 days"
+current_run_name = "vanilla_Bigdata_0.1_HFpre_nomypre_noDrop"
+current_description = "An experiment focused only on finetuning stage: comparing whether using a trained self-predictor" \
+                      "as regularization improves over vanilla when dropout is disabled"
 RUNS[current_run_name] = {'commands': [
         f"ssh {current_server}",
 
-        f"conda activate p1; python pretrain.py --max_GPUs=1 --d_batch=8 "
-            f" --run_name={current_run_name}"
-            f' --description="{current_description}"'
-            f" --flagfile=configs/base.txt"
-            f" --learning_rate=10e-6"
-            f" --num_epochs=1"
-            f" --patience=6"
-            f" --num_serialized_models_to_keep=1"
-        f" --max_seq_length=256"
-        f" --use_HFpretrained_weights",
-
-            f'  cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-            f' --pretrained_model={current_run_name} --max_GPUs=1 '
-            f' --overrides "run_name={current_run_name}"; cd ..'
+            f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+            f' --max_GPUs=1 '
+            f' --overrides "run_name={current_run_name}'
+            f'input_module=albert-base-v1"'
+        f'"; cd ..'
         ],
     'description': current_description,
     'server': current_server}
 
-current_server = 'arwen'
-current_run_name = "twoStep_SG_Bigdata_0.1_HFpretrain_mypretrain"
-current_description = "Testing whether this setup can improve results: first training an internal predictor separately" \
-                      " while freezing the main weights, then freezing the internal predictor, and using it to replace" \
-                      " internal states DURING SG FINETUNING"
+current_server = 'frodo'
+current_run_name = "self-predicting_Bigdata_0.1_HFpre_nomypre_noDrop"
+current_description = "An experiment focused only on finetuning stage: comparing whether using a trained self-predictor" \
+                      "as regularization improves over vanilla when dropout is disabled"
+pretrained_model_path = "/cw/working-arwen/nathan/phd/output/pretraining/twoStep_SG_Bigdata_0.1_HFpretrain_mypretrain/best.th"
 RUNS[current_run_name] = {'commands': [
         f"ssh {current_server}",
 
-        f"python pretrain.py --max_GPUs=1 --d_batch=8 "
-            f" --run_name={current_run_name}"
-            f' --description="{current_description}"'
-            f" --flagfile=configs/base.txt"
-            f" --learning_rate=10e-6"
-            f" --num_epochs=1"
-            f" --patience=6"
-            f" --num_serialized_models_to_keep=1"
-        f" --max_seq_length=256"
-        f" --freeze_main_model"
-        f" --DIR=combo"
-        f" --use_HFpretrained_weights",
+        # f"python pretrain.py --max_GPUs=1 --d_batch=8 "
+        #     f" --run_name={current_run_name}"
+        #     f' --description="{current_description}"'
+        #     f" --flagfile=configs/base.txt"
+        #     f" --learning_rate=10e-6"
+        #     f" --num_epochs=1"
+        #     f" --patience=6"
+        #     f" --num_serialized_models_to_keep=1"
+        # f" --max_seq_length=256"
+        # f" --freeze_main_model"
+        # f" --DIR=combo"
+        # f" --use_HFpretrained_weights",
 
 
             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-            f' --pretrained_model={current_run_name} --max_GPUs=1 '
+            f' --max_GPUs=1 '
+            f' --saved_pretrained_model_path={pretrained_model_path}'
             f' --overrides "run_name={current_run_name}'
-        f' --replace_self_predictions=always"; cd ..'
+        f'"; cd ..'
         ],
     'description': current_description,
     'server': current_server}
-
-server = libtmux.Server()
-session = server.find_where({"session_name": "exps"})
-assert session is not None, "Don't forget to start a tmux session"
 
 
 def track_run_in_sheets(run_name, commands, description, server):
@@ -1008,7 +1050,9 @@ def track_run_in_sheets(run_name, commands, description, server):
 
     pprint(response)
 
-
+server = libtmux.Server()
+session = server.find_where({"session_name": "exps"})
+assert session is not None, "Don't forget to start a tmux session"
 for run_name, run_values in RUNS.items():
     commands = run_values['commands']
     description = run_values['description']

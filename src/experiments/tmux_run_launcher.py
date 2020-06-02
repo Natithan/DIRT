@@ -986,15 +986,16 @@ for current_server, current_lambda in zip(
 ):
     current_run_name = f"lambda_{current_lambda}_HFpretrain_WBG"
     current_description = "Updated to work with wiki+bc+gb data: pretraining with different fractions lambda of" \
-                          " DIR loss objective, seeing if improvement at any lambda"
+                          " DIR loss objective, seeing if improvement at any lambda." \
+                          "No DAR, only DAO "
     RUNS[current_run_name] = {'commands': [
         f"ssh {current_server}",
 
         f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
-        f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=5 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+        f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
         f" --d_batch=5 --max_seq_length=256 "
         f" --DIR=combo"
-        f" --replace_self_predictions=alternate"
+        f" --replace_self_predictions=''"
         f" --use_HFpretrained_weights"
         f" --DIR_loss_fraction={current_lambda}",
 

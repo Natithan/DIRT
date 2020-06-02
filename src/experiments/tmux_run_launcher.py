@@ -982,7 +982,7 @@ for current_server, current_lambda in zip(
         #     [0,.2,.4,.6,.8,1]
 
         ['frodo', 'frodo', 'bilbo', 'bilbo'],
-        [0, .2, .4, .6, .8]
+        [0, .3, .6, .9]
 ):
     current_run_name = f"lambda_{current_lambda}_HFpretrain_WBG"
     current_description = "Updated to work with wiki+bc+gb data: pretraining with different fractions lambda of" \
@@ -991,10 +991,10 @@ for current_server, current_lambda in zip(
         f"ssh {current_server}",
 
         f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
-        f"--max_GPUs=1 --learning_rate=10e-6 --num_epochs=5 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+        f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=5 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
         f" --d_batch=5 --max_seq_length=256 "
         f" --DIR=combo"
-        f" --alternate_internal_prediction"
+        f" --replace_self_predictions=alternate"
         f" --use_HFpretrained_weights"
         f" --DIR_loss_fraction={current_lambda}",
 
@@ -1110,3 +1110,4 @@ for run_name, run_values in RUNS.items():
         else:
             pane.send_keys(command)
     time.sleep(10)  # To make sure the same GPUs aren't picked
+

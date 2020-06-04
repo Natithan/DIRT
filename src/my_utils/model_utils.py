@@ -22,18 +22,33 @@ def masked_MSE_loss(target, predicted, mask):
     '''
     return torch.mean((((target - predicted) * ~mask[None, :, None]) ** 2))
 
+def masked_cosine_similarity(target, predicted, mask):
+    '''
+    Returns the cosine distance between target and predicted that only considers sequence elements (along the 2nd dimension) for which the mask is zero
+    '''
+    masked_target = target[:,mask == False,:]
+    masked_predicted = predicted[:,mask == False,:]
+    return torch.mean(torch.nn.CosineSimilarity(dim=-1)(masked_target,masked_predicted)) #TODO tian et al don't exactly take cosine loss. adapt, or just use (1-cosine similarity)/2 for h?
+
 
 def contrastive_L2_loss(in_state, predicted_in_state, mask):
     if FLAGS.d_batch <= 1:
         raise ValueError('Using DIR requires batch size bigger than 1 to contrast with')
     d_batch = in_state.shape[0]
-    negative_loss = sum([masked_MSE_loss(in_state.roll(shifts=i, dims=0), predicted_in_state, mask) for i in
-                         range(
-                             d_batch)]) / d_batch if d_batch > 1 else torch.tensor(
-        1.)
-    # Positive loss: distance to corresponding batch element
-    positive_loss = masked_MSE_loss(in_state, predicted_in_state, mask)
-    layer_loss = positive_loss / negative_loss
+    if FLAGS.contrastive_loss == 'MSE':
+        negative_loss = sum([masked_MSE_loss(in_state.roll(shifts=i, dims=0), predicted_in_state, mask) for i in
+                             range(
+                                 d_batch)]) / d_batch if d_batch > 1 else torch.tensor(
+            1.)
+        # Positive loss: distance to corresponding batch element
+        positive_loss = masked_MSE_loss(in_state, predicted_in_state, mask)
+        layer_loss = positive_loss / negative_loss
+    elif FLAGS.contrastive_loss == 'CE':
+        positive_loss = torch.log(torch.sigmoid(masked_cosine_similarity(in_state, predicted_in_state, mask)))
+        negatives_loss = sum([torch.log(
+                         torch.sigmoid(masked_cosine_similarity(in_state.roll(shifts=i, dims=0), predicted_in_state, mask)))
+                          for i in range(d_batch-1)])
+        layer_loss = - (positive_loss + negatives_loss)
     return layer_loss
 
 
@@ -46,6 +61,7 @@ def process_targets_for_loss(target_tokens):
 
     return target_tokens_contiguous
 
+
 def get_activation():
     if FLAGS.activation == 'relu':
         return nn.ReLU()
@@ -56,19 +72,19 @@ def get_activation():
 
 
 def sizeof_fmt(num, suffix='B'):
-    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+    for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
 
+
 def sizeof_mb(num, suffix='B'):
-    for unit in ['','Ki']:
+    for unit in ['', 'Ki']:
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Mi', suffix)
-
 
 
 def sz(tensor_or_module):

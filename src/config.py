@@ -132,7 +132,7 @@ flags.DEFINE_string("replace_self_predictions", "", "When to replace internal st
                                                     "\"alternate\" to alternate replacing them and learning the self-predictor, and "
                                                     "\"always\" to always replace internal states (this assumes "
                                                     "having a trained self-predictor)")
-
+flags.DEFINE_string("contrastive_loss","MSE","Type of contrastive loss to use.")
 FLAGS(sys.argv)
 
 

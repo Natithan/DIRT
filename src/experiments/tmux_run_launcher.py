@@ -978,8 +978,6 @@ BASE_SERVER = "arwen"
 #     'server': current_server}
 
 for current_server, current_lambda in zip(
-        # ['frodo','frodo','frodo','arwen','rose','rose'],
-        #     [0,.2,.4,.6,.8,1]
 
         ['frodo', 'frodo', 'bilbo', 'bilbo'],
         [0, .3, .6, .9]

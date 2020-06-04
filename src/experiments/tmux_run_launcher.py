@@ -1008,7 +1008,8 @@ current_server = 'arwen'
 current_run_name = "twoStep_SG_Bigdata_0.1_HFpretrain_mypretrain_v2"
 current_description = "Testing whether this setup can improve results: first training an internal predictor separately" \
                       " while freezing the main weights, then freezing the internal predictor, and using it to replace" \
-                      " internal states DURING SG FINETUNING"
+                      " internal states DURING SG FINETUNING." \
+                      "This time with no handicap during inference, and corrected freezing of main weights"
 RUNS[current_run_name] = {'commands': [
         f"ssh {current_server}",
 

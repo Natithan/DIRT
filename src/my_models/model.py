@@ -279,9 +279,10 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
             self.from_left_predictor = from_left
             self.from_right_predictor = from_right
             self.combiner = combiner
-            for p in [self.top_down_predictor, self.from_left_predictor, self.from_right_predictor,
+            for m in [self.top_down_predictor, self.from_left_predictor, self.from_right_predictor,
                       self.combiner]:
-                p.requires_grad = learn_phase
+                for p in m.parameters():
+                    p.requires_grad = learn_phase
 
     def forward(self, *inputs):
         layers = self[:FLAGS.nb_encoder_layers]

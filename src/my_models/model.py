@@ -61,9 +61,10 @@ class DIRTLMHead(Model):
             self.load_HFpretrained_weights()
 
         if FLAGS.freeze_main_model:
-            self.embedder.requires_grad = False
-            self.shared_encoder_block.requires_grad = False
-            self.lm_head.requires_grad = False
+            modules_to_freeze = [self.embedder, self.shared_encoder_block, self.lm_head]
+            for m in modules_to_freeze:
+                for p in m.parameters():
+                    p.requires_grad=False
 
     def load_HFpretrained_weights(self):
         hf_state_dict = AlbertForMaskedLM.from_pretrained(FLAGS.hf_model_handle).state_dict()
@@ -116,7 +117,7 @@ class DIRTLMHead(Model):
     def forward(self, input_ids, padding_mask, masked_lm_labels=None, token_type_ids=None):
 
         # ENCODING
-        clean = (FLAGS.DIR != 'combo') or (self.finetune_stage and not FLAGS.replace_self_predictions)
+        clean = (FLAGS.DIR != 'combo') or (not self.training) or (self.finetune_stage and not FLAGS.replace_self_predictions)
         if FLAGS.DIR == 'combo':
             normalizer = FLAGS.nb_encoder_layers - FLAGS.top_down_distance
 

@@ -240,7 +240,9 @@ class EncoderBlock(nn.Module):
             # self.top_down_regressor = nn.Sequential()
 
     def forward(self, in_state, padding_mask,
-                cum_layer_loss=0, layer_loss_list=[]):
+                cum_layer_loss=0, layer_loss_list=None):
+        if layer_loss_list == None:
+            layer_loss_list = []
         attention_output_dict = self.multihead_attention(in_state, in_state, padding_mask)
         att_out = attention_output_dict['activations']
         out_state = self.feedforward(att_out)

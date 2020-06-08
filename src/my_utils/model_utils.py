@@ -22,13 +22,16 @@ def masked_MSE_loss(target, predicted, mask):
     '''
     return torch.mean((((target - predicted) * ~mask[None, :, None]) ** 2))
 
-def masked_cosine_similarity(target, predicted, mask):
+
+def masked_cosine_critic(target, predicted, mask):
     '''
     Returns the cosine distance between target and predicted that only considers sequence elements (along the 2nd dimension) for which the mask is zero
     '''
-    masked_target = target[:,mask == False,:]
-    masked_predicted = predicted[:,mask == False,:]
-    return torch.mean(torch.nn.CosineSimilarity(dim=-1)(masked_target,masked_predicted)) #TODO tian et al don't exactly take cosine loss. adapt, or just use (1-cosine similarity)/2 for h?
+    masked_target = target[:, mask == False, :]
+    masked_predicted = predicted[:, mask == False, :]
+    mean_cosine_similarity = torch.mean(torch.nn.CosineSimilarity(dim=-1)(masked_target,
+                                                        masked_predicted)) # Higher if closer
+    return (1 + mean_cosine_similarity)/2 # Squeeze between 0 and 1
 
 
 def contrastive_L2_loss(in_state, predicted_in_state, mask):
@@ -44,11 +47,10 @@ def contrastive_L2_loss(in_state, predicted_in_state, mask):
         positive_loss = masked_MSE_loss(in_state, predicted_in_state, mask)
         layer_loss = positive_loss / negative_loss
     elif FLAGS.contrastive_loss == 'CE':
-        positive_loss = torch.log(torch.sigmoid(masked_cosine_similarity(in_state, predicted_in_state, mask)))
-        negatives_loss = sum([torch.log(
-                         torch.sigmoid(masked_cosine_similarity(in_state.roll(shifts=i, dims=0), predicted_in_state, mask)))
-                          for i in range(d_batch-1)])
-        layer_loss = - (positive_loss + negatives_loss)
+        positive_similarity = torch.log(masked_cosine_critic(in_state, predicted_in_state, mask))
+        negatives_dissimilarity = sum([torch.log(1-masked_cosine_critic(in_state.roll(shifts=i, dims=0), predicted_in_state, mask))
+            for i in range(d_batch - 1)])
+        layer_loss = - (positive_similarity + negatives_dissimilarity)
     return layer_loss
 
 

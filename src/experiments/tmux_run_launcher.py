@@ -1036,32 +1036,137 @@ BASE_SERVER = "arwen"
 #         ],
 #     'description': current_description,
 #     'server': current_server}
-for current_server, current_lambda in zip(
+# for current_server, current_lambda in zip(
+#
+#         ['bilbo', 'bilbo'],
+#         [0, .3]
+# ):
+#     current_run_name = f"lambda_{current_lambda}_HFpretrain_WBG_r2"
+#     current_description = "A second run (with bigger batch size) of: Updated to work with wiki+bc+gb data: pretraining with different fractions lambda of" \
+#                           " DIR loss objective, seeing if improvement at any lambda." \
+#                           "No DAR, only DAO "
+#     RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+#         f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+#         f" --d_batch=8 --max_seq_length=256 "
+#         f" --DIR=combo"
+#         f" --replace_self_predictions=''"
+#         f" --use_HFpretrained_weights"
+#         f" --DIR_loss_fraction={current_lambda}",
+#
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#         f' --overrides "run_name={current_run_name}"; cd ..'
+#     ],
+#         'description': current_description,
+#         'server': current_server}
 
-        ['bilbo', 'bilbo'],
-        [0, .3]
-):
-    current_run_name = f"lambda_{current_lambda}_HFpretrain_WBG_r2"
-    current_description = "A second run (with bigger batch size) of: Updated to work with wiki+bc+gb data: pretraining with different fractions lambda of" \
-                          " DIR loss objective, seeing if improvement at any lambda." \
-                          "No DAR, only DAO "
-    RUNS[current_run_name] = {'commands': [
-        f"ssh {current_server}",
+# current_server = 'rose'
+# current_run_name = "self-predicting_Bigdata_0.1_HFpre_nomypre_noDrop_v2"
+# current_description = "With properly-frozen-pretrained-self-predictor: An experiment focused only on finetuning stage: " \
+#                       "comparing whether using a trained self-predictor as regularization improves over vanilla when dropout is disabled"
+# pretrained_model_path = "/cw/working-arwen/nathan/phd/output/pretraining/twoStep_SG_Bigdata_0.1_HFpretrain_mypretrain_v2/best.th"
+# RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         # f"python pretrain.py --max_GPUs=1 --d_batch=8 "
+#         #     f" --run_name={current_run_name}"
+#         #     f' --description="{current_description}"'
+#         #     f" --flagfile=configs/base.txt"
+#         #     f" --learning_rate=10e-6"
+#         #     f" --num_epochs=1"
+#         #     f" --patience=6"
+#         #     f" --num_serialized_models_to_keep=1"
+#         # f" --max_seq_length=256"
+#         # f" --freeze_main_model"
+#         # f" --DIR=combo"
+#         # f" --use_HFpretrained_weights",
+#
+#
+#             f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#             f' --max_GPUs=1'
+#             f' --dropout_rate=0 '
+#             f' --saved_pretrained_model_path={pretrained_model_path}'
+#             f' --overrides "run_name={current_run_name}'
+#         f'"; cd ..'
+#         ],
+#     'description': current_description,
+#     'server': current_server}
 
-        f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
-        f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
-        f" --d_batch=8 --max_seq_length=256 "
-        f" --DIR=combo"
-        f" --replace_self_predictions=''"
-        f" --use_HFpretrained_weights"
-        f" --DIR_loss_fraction={current_lambda}",
+# for current_server, current_lambda in zip(
+#
+#         ['bilbo', 'bilbo'],
+#         [0, .3]
+# ):
+# current_server = 'rose'
+# current_lambda = 0.3
+# current_run_name = f"alternate_lambda_{current_lambda}_HFpre_WBG"
+# current_description = "Rerun alternating DIRT with WBG data, to compare with before-WBG, and with both vanilla_WBG and combo_WBG "
+# RUNS[current_run_name] = {'commands': [
+#     f"ssh {current_server}",
+#
+#     f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+#     f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+#     f" --d_batch=8 --max_seq_length=256 "
+#     f" --DIR=combo"
+#     f" --replace_self_predictions='alternate'"
+#     f" --use_HFpretrained_weights"
+#     f" --DIR_loss_fraction={current_lambda}",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#     f' --overrides "run_name={current_run_name}"; cd ..'
+# ],
+#     'description': current_description,
+#     'server': current_server}
 
-        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --pretrained_model={current_run_name} --max_GPUs=1 '
-        f' --overrides "run_name={current_run_name}"; cd ..'
-    ],
-        'description': current_description,
-        'server': current_server}
+# current_server = 'arwen'
+# current_lambda = 0.3
+# current_run_name = f"combo_small_pred_lambda_{current_lambda}_HFpre_WBG"
+# current_description = "Testing whether a smaller predictor (=better for mem) can improve over vanilla / " \
+#                       "over bigger self-predictor"
+# RUNS[current_run_name] = {'commands': [
+#     f"ssh {current_server}",
+#
+#     f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+#     f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+#     f" --d_batch=8 --max_seq_length=256 "
+#     f" --DIR=combo"
+#     f" --replace_self_predictions='alternate'"
+#     f" --use_HFpretrained_weights"
+#     f" --DIR_loss_fraction={current_lambda}",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#     f' --overrides "run_name={current_run_name}"; cd ..'
+# ],
+#     'description': current_description,
+#     'server': current_server}
+
+current_server = 'rose'
+current_lambda = 0.3
+current_run_name = f"combo_CEloss_lambda_{current_lambda}_HFpre_WBG"
+current_description = f"Test effect of Tian-et-al-inspired loss, to be compared with normal lambda_{current_lambda}_HFpre_WBG"
+RUNS[current_run_name] = {'commands': [
+    f"ssh {current_server}",
+
+    f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+    f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+    f" --d_batch=8 --max_seq_length=256 "
+    f" --DIR=combo"
+    f" --contrastive_loss=CE"
+    f" --use_HFpretrained_weights"
+    f" --DIR_loss_fraction={current_lambda}",
+
+    f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+    f' --pretrained_model={current_run_name} --max_GPUs=1 '
+    f' --overrides "run_name={current_run_name}"; cd ..'
+],
+    'description': current_description,
+    'server': current_server}
+
 def track_run_in_sheets(run_name, commands, description, server):
     SPREADSHEET_ID = '1JBFTrsLGd35ZZ2ATbOmv6WzF57A2xtEhneU5vQQXtj4'
     SHEET_ID = 0

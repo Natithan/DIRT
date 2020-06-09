@@ -11,6 +11,7 @@ import logging as log
 
 logger = log.getLogger()
 
+
 class MyTrainer(GradientDescentTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -67,11 +68,20 @@ class MyTrainer(GradientDescentTrainer):
         num_training_batches = math.ceil(
             len(self.data_loader) / self._num_gradient_accumulation_steps
         )
+
+        # Starting batch (nonzero if restarting mid-way an epoch
+        if self.data_loader.dataset.current_permuted_indices is None:
+            starting_batch = 0
+        else:
+            batches_per_row = len(self.data_loader) / len(self.data_loader.dataset.current_permuted_indices)
+            batches_per_row /= self._num_gradient_accumulation_steps
+            starting_batch = math.ceil(batches_per_row * self.data_loader.dataset.row_index)
+
         # Having multiple tqdm bars in case of distributed training will be a mess. Hence only the master's
         # progress is shown
         if self._master:
             batch_group_generator_tqdm = Tqdm.tqdm(
-                batch_group_generator, total=num_training_batches
+                batch_group_generator, total=num_training_batches, initial=starting_batch
             )
         else:
             batch_group_generator_tqdm = batch_group_generator
@@ -196,9 +206,9 @@ class MyTrainer(GradientDescentTrainer):
 
             # Save model if needed.
             if (
-                self._model_save_interval is not None
-                and (time.time() - last_save_time > self._model_save_interval)
-                and self._master
+                    self._model_save_interval is not None
+                    and (time.time() - last_save_time > self._model_save_interval)
+                    and self._master
             ):
                 last_save_time = time.time()
                 self._save_checkpoint(
@@ -231,7 +241,8 @@ class MyTrainer(GradientDescentTrainer):
             metrics["gpu_" + str(gpu_num) + "_memory_MB"] = memory
         return metrics
 
-    def train(self) -> Dict[str, Any]: # For the most part a copy of the allennlp method, with support for distinction between inter- and intra-epoch checkpoints
+    def train(self) -> Dict[
+        str, Any]:  # For the most part a copy of the allennlp method, with support for distinction between inter- and intra-epoch checkpoints
         """
         Trains the supplied model with the supplied parameters.
         """
@@ -351,7 +362,7 @@ class MyTrainer(GradientDescentTrainer):
             if epoch < self._num_epochs - 1:
                 training_elapsed_time = time.time() - training_start_time
                 estimated_time_remaining = training_elapsed_time * (
-                    (self._num_epochs - epoch_counter) / float(epoch - epoch_counter + 1) - 1
+                        (self._num_epochs - epoch_counter) / float(epoch - epoch_counter + 1) - 1
                 )
                 formatted_time = str(datetime.timedelta(seconds=int(estimated_time_remaining)))
                 logger.info("Estimated training time remaining: %s", formatted_time)
@@ -368,12 +379,122 @@ class MyTrainer(GradientDescentTrainer):
 
         return metrics
 
+    # Adapted to also save information about the dataloader, to be able to do a restart mid-epoch
+    def _save_checkpoint(self, epoch: Union[int, str]) -> None:
+        """
+        Saves a checkpoint of the model to self._serialization_dir.
+        Is a no-op if self._serialization_dir is None.
+
+        # Parameters
+
+        epoch : Union[int, str], required.
+            The epoch of training.  If the checkpoint is saved in the middle
+            of an epoch, the parameter is a string with the epoch and timestamp.
+        """
+        # If moving averages are used for parameters, we save
+        # the moving average values into checkpoint, instead of the current values.
+        if self._moving_average is not None:
+            self._moving_average.assign_average_value()
+
+        # These are the training states we need to persist.
+        training_states = {
+            "metric_tracker": self._metric_tracker.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "batch_num_total": self._batch_num_total,
+            "data_loader": self.data_loader
+        }
+
+        # If we have a learning rate or momentum scheduler, we should persist them too.
+        if self._learning_rate_scheduler is not None:
+            training_states["learning_rate_scheduler"] = self._learning_rate_scheduler.state_dict()
+        if self._momentum_scheduler is not None:
+            training_states["momentum_scheduler"] = self._momentum_scheduler.state_dict()
+
+        self._checkpointer.save_checkpoint(
+            model_state=self.model.state_dict(),
+            epoch=epoch,
+            training_states=training_states,
+            is_best_so_far=self._metric_tracker.is_best_so_far(),
+        )
+
+        # Restore the original values for parameters so that training will not be affected.
+        if self._moving_average is not None:
+            self._moving_average.restore()
+
+    # Adapted to also save information about the dataloader, to be able to do a restart mid-epoch
+    def _restore_checkpoint(self) -> int:
+        """
+        Restores the model and training state from the last saved checkpoint.
+        This includes an epoch count and optimizer state, which is serialized separately
+        from model parameters. This function should only be used to continue training -
+        if you wish to load a model for inference/load parts of a model into a new
+        computation graph, you should use the native Pytorch functions:
+        ` model.load_state_dict(torch.load("/path/to/model/weights.th"))`
+
+        If `self._serialization_dir` does not exist or does not contain any checkpointed weights,
+        this function will do nothing and return 0.
+
+        # Returns
+
+        epoch: int
+            The epoch at which to resume training, which should be one after the epoch
+            in the saved training state.
+        """
+        model_state, training_state = self._checkpointer.restore_checkpoint()
+
+        if not training_state:
+            # No checkpoint to restore, start at 0
+            return 0
+
+        self.model.load_state_dict(model_state)
+        self.optimizer.load_state_dict(training_state["optimizer"])
+        if (
+                self._learning_rate_scheduler is not None
+                and "learning_rate_scheduler" in training_state
+        ):
+            self._learning_rate_scheduler.load_state_dict(training_state["learning_rate_scheduler"])
+        if self._momentum_scheduler is not None and "momentum_scheduler" in training_state:
+            self._momentum_scheduler.load_state_dict(training_state["momentum_scheduler"])
+        training_util.move_optimizer_to_cuda(self.optimizer)
+
+        # Currently the `training_state` contains a serialized `MetricTracker`.
+        if "metric_tracker" in training_state:
+            self._metric_tracker.load_state_dict(training_state["metric_tracker"])
+        # It used to be the case that we tracked `val_metric_per_epoch`.
+        elif "val_metric_per_epoch" in training_state:
+            self._metric_tracker.clear()
+            self._metric_tracker.add_metrics(training_state["val_metric_per_epoch"])
+        # And before that we didn't track anything.
+        else:
+            self._metric_tracker.clear()
+        self.data_loader = training_state['data_loader']
+        # To deal with restarts from intra-epoch stops
+        if self.data_loader.dataset.chunk_paths or self.data_loader.dataset.current_chunk_path: # This indicates that we didn't finish with all chunks in the epoch that the training state was in
+            epochs_to_add = 0
+        else:
+            epochs_to_add = 1
+
+        if isinstance(training_state["epoch"], int):
+            epoch_to_return = training_state["epoch"] + epochs_to_add
+        else:
+            epoch_to_return = int(training_state["epoch"].split(".")[0]) + epochs_to_add
+
+
+        # For older checkpoints with batch_num_total missing, default to old behavior where
+        # it is unchanged.
+        batch_num_total = training_state.get("batch_num_total")
+        if batch_num_total is not None:
+            self._batch_num_total = batch_num_total
+
+
+        return epoch_to_return
+
+
 class MyCheckpointer(Checkpointer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # self._num_temp_serialized_models_to_keep = num_temp_serialized_models_to_keep
-
 
     def save_checkpoint(
             self,
@@ -438,4 +559,3 @@ class MyCheckpointer(Checkpointer):
             for fname in paths_to_remove[1:]:
                 if os.path.isfile(fname):
                     os.remove(fname)
-

@@ -129,6 +129,11 @@ class CombinedSplitDataset(IterableDataset):
         self.token_indexer = get_my_tokenizer()
         self.split_name = split
         self.split_chunks_folder = Path(FLAGS.blob_folder,f'{split}')
+        self.chunk_paths = None
+        self.pop_indices = None
+        self.row_index = None
+        self.current_permuted_indices = None
+        self.current_chunk_path = None
 
     def make_chunks(self):
         total_data_tensor = self.get_data()
@@ -137,14 +142,35 @@ class CombinedSplitDataset(IterableDataset):
     def __iter__(self): #TODO make sure this supports multi-GPU loading with worker_info = torch.utils.data.get_worker_info(): https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset
         if not self.split_chunks_folder.is_dir():
             self.make_chunks()
-        chunk_paths = list(self.split_chunks_folder.glob('*.pt'))
-        assert chunk_paths, f"{self.split_chunks_folder} is empty!"
-        while chunk_paths:
-            chunk_path = chunk_paths.pop(random.randrange(len(chunk_paths)))
-            chunk_data = torch.load(chunk_path.as_posix()).to(torch.int64) # Needs to be torch.long for downstream, but storing as int32 because uses less space
-            chunk_data = chunk_data[torch.randperm(len(chunk_data))]
-            for row in chunk_data:
-                yield row
+
+        if (not self.current_chunk_path) and ((not self.chunk_paths) or (not self.pop_indices)): # Storing this to be able to pick up runs intra-epoch between restarts
+            self.chunk_paths = list(self.split_chunks_folder.glob('*.pt'))
+            length = len(self.chunk_paths)
+            self.pop_indices = []
+            while length > 0:
+                self.pop_indices.append(random.randrange(length))
+                length -= 1
+            assert self.chunk_paths , f"{self.split_chunks_folder} is empty!"
+
+
+        while self.chunk_paths or self.current_chunk_path :
+            assert len(self.pop_indices) == len(self.chunk_paths)# Needs to be torch.long for downstream, but storing as int32 because uses less space
+            if (self.current_chunk_path is None) or (self.current_permuted_indices is None):
+                pop_idx = self.pop_indices.pop(0)
+                self.current_chunk_path = self.chunk_paths.pop(pop_idx)
+                chunk_data = torch.load(self.current_chunk_path.as_posix()).to(torch.int64)
+                self.current_permuted_indices = torch.randperm(len(chunk_data))
+            else:
+                chunk_data = torch.load(self.current_chunk_path.as_posix()).to(torch.int64)
+            chunk_data = chunk_data[self.current_permuted_indices]
+            if not self.row_index:
+                self.row_index = 0
+            while self.row_index < len(chunk_data):
+                yield chunk_data[self.row_index]
+                self.row_index += 1
+            self.current_permuted_indices = None
+            self.current_chunk_path = None
+            self.row_index = None
 
     def __len__(self):
         length_blob_path = Path(FLAGS.blob_folder, f'{self.split_name}_tensor_combined_length').as_posix()

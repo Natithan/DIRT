@@ -18,6 +18,25 @@ class MLMModelWrapper(Model):
         self.objective = OBJECTIVE_MAPPING[FLAGS.objective]
         self.token_indexer = get_my_tokenizer()
 
+        if FLAGS.selfpretrained_weights_path:
+            self.load_selfpretrained_weights()
+
+    def load_selfpretrained_weights(self):
+        target_state_dict = torch.load(FLAGS.selfpretrained_weights_path, map_location='cpu')
+        if FLAGS.retrain_self_predictor:
+            self_prediction_parameters = [
+                'top_down_regressor',
+                'combiner', 'shared_top_down_predictor', 'shared_from_left_predictor', 'shared_from_right_predictor'
+
+            ]
+            target_state_dict = {k: v for (k, v) in target_state_dict.items() if not any([s in k for s in
+                                                                                          self_prediction_parameters])}
+        missing, unexpected = self.load_state_dict(target_state_dict, strict=False)
+        assert not unexpected
+        for m in missing:
+            if not any([s in m for s in self_prediction_parameters]):
+                raise ValueError(f'Unexpected mismatch in loading state dict: {m} not present in pretrained.')
+
     def forward(self, input_ids,token_type_ids=None):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
         new_input_dict = {}
         new_input_dict['padding_mask'] = input_ids != self.token_indexer.pad_token_id

@@ -17,7 +17,7 @@ from transformers import AlbertModel, AlbertForMaskedLM
 
 from config import FLAGS, get_my_tokenizer
 from constants import TYPE_VOCAB_SIZE
-from my_utils.model_utils import contrastive_L2_loss, apply_sequence_mask, process_targets_for_loss, get_activation, \
+from my_utils.model_utils import contrastive_loss, apply_sequence_mask, process_targets_for_loss, get_activation, \
     sizeof_fmt, sz
 import logging as log
 
@@ -65,6 +65,9 @@ class DIRTLMHead(Model):
             for m in modules_to_freeze:
                 for p in m.parameters():
                     p.requires_grad=False
+
+
+
 
     def load_HFpretrained_weights(self):
         hf_state_dict = AlbertForMaskedLM.from_pretrained(FLAGS.hf_model_handle).state_dict()
@@ -255,7 +258,7 @@ class EncoderBlock(nn.Module):
                 masked_out_state = self.feedforward(
                     masked_att_out)  # TODO should add activation? And should add sometimes-not-masking?
                 predicted_in_state = self.top_down_regressor(masked_out_state)
-                layer_loss = contrastive_L2_loss(in_state, predicted_in_state, mask)
+                layer_loss = contrastive_loss(in_state, predicted_in_state, mask)
             elif FLAGS.DIR == 'from_projection':
                 layer_loss = attention_output_dict['layer_loss']
             else:
@@ -312,7 +315,7 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
                 edge_mask[-1] = True
                 DIRT_mask = DIRT_mask | edge_mask
 
-                layer_loss = contrastive_L2_loss(in_activations, combined_prediction, DIRT_mask)
+                layer_loss = contrastive_loss(in_activations, combined_prediction, DIRT_mask)
                 cum_layer_loss += layer_loss
                 layer_loss_list.append(layer_loss)
                 if not self.learn_phase:  # Wipe some internal states and replace them with predictions
@@ -351,7 +354,7 @@ class Anticipation(nn.Module):
         predicted_state_stacked = projected_input.bmm(masked_pos_embeddings)  # [d_batch x nb_heads, d_head, d_seq]
         predicted_state = predicted_state_stacked.reshape(d_batch, d_hidden, d_seq).transpose(1, 2)
 
-        return contrastive_L2_loss(original_state, predicted_state, mask)
+        return contrastive_loss(original_state, predicted_state, mask)
 
 
 class MultiHeadAttention(nn.Module):

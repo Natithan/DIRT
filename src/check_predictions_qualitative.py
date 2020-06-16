@@ -1,7 +1,7 @@
 import os
 import random
 
-from wrappers import MLMModelWrapper, MODEL_MAPPING
+from wrappers import PretrainObjectiveModelWrapper, MODEL_MAPPING
 
 import sys
 
@@ -27,7 +27,7 @@ def main(_):
     data_dict = reader.get_data_dict()
     train_dataset, test_dataset, val_dataset, vocab = (data_dict[key] for key in
                                                        ('train', 'test', 'val', 'vocab'))
-    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model], vocab)
+    model = PretrainObjectiveModelWrapper(MODEL_MAPPING[FLAGS.model], vocab)
     model_device = f'cuda:{FLAGS.device_idxs[0]}' if len(FLAGS.device_idxs) != 0 else 'cpu'
     model = model.cuda(model_device)
 

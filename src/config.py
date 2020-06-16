@@ -77,6 +77,8 @@ flags.DEFINE_bool("old_pretrain_data", False,
 flags.DEFINE_string("objective", "simple_mlm",
                     "Name of the denoising objective to use (see OBJECTIVE_MAPPING)")
 flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")
+flags.DEFINE_float("random_switch_fraction", .10, "Fraction of masked tokens that are actually replaced with a random vocabulary word")
+flags.DEFINE_float("preserve_fraction", .10, "Fraction of masked tokens that are actually replaced with the original word")
 
 # Flags that determine what the model looks like
 flags.DEFINE_string("model", "my_model", "Name of the model to use (see MODEL_MAPPING)")
@@ -156,10 +158,11 @@ def process_flags():
 
 from objectives import *
 
-OBJECTIVE_MAPPING = OrderedDict(
+MLM_OBJECTIVE_MAPPING = OrderedDict(
     [
         ("t5_mlm", t5_denoise_spans_objective,),
-        ("simple_mlm", BERT_MLM_objective,),
+        ("simple_mlm", simple_mlm_objective,),
+        ("albert_mlm_sop", BERT_MLM_objective,),
     ]
 )
 TOKENIZER = None
@@ -171,11 +174,3 @@ def get_my_tokenizer():
         TOKENIZER = AlbertTokenizer.from_pretrained(FLAGS.hf_model_handle)
         TOKENIZER.max_len = FLAGS.max_seq_length
     return TOKENIZER
-
-
-ACTIVATION_MAPPING = OrderedDict(
-    [
-        ("gelu", t5_denoise_spans_objective,),
-        ("relu", BERT_MLM_objective,),
-    ]
-)

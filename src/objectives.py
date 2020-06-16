@@ -35,15 +35,38 @@ def t5_denoise_spans_objective(
     return unique_masked_given, unique_masked_target
 
 
-def BERT_MLM_objective(target_ids, token_indexer):
+def simple_mlm_objective(input_ids, token_indexer):
     '''
     Produces a tensor of the same shape as masked_lm_labels, but with FLAGS.masking_fraction of the tokens replaces by a mask id
     '''
     masking_id = token_indexer.mask_token_id
-    is_special_token = deepcopy(target_ids).cpu().apply_(lambda x: x in token_indexer.all_special_ids).cuda(target_ids.device).to(torch.bool)
-    condition = (torch.rand(target_ids.shape).cuda(target_ids.device) > FLAGS.masking_fraction) | \
-                (is_special_token)
-    masked_ids = torch.where(condition,
-                             target_ids,
-                             masking_id * torch.ones_like(target_ids))
-    return masked_ids
+    not_special_token = deepcopy(input_ids).cpu().apply_(lambda x: x not in token_indexer.all_special_ids).cuda(
+        input_ids.device).to(torch.bool)
+    is_target_idx = (torch.rand(input_ids.shape).cuda(input_ids.device) <= FLAGS.masking_fraction) & \
+                    not_special_token
+    masked_ids = torch.where(is_target_idx,
+                             masking_id * torch.ones_like(input_ids),
+                             input_ids)
+    return masked_ids, is_target_idx
+
+
+# TODO add albert-style objective: BERT-like MLM + SOP
+def BERT_MLM_objective(input_ids, token_indexer):
+    '''
+    Produces a tensor of the same shape as masked_lm_labels, but with
+    - FLAGS.masking_fraction of the tokens replaced by a mask id
+    - FLAGS.preserve_fraction * FLAGS.masking_fraction
+    - FLAGS.random_switch_fraction
+    '''
+    masked_ids, is_target_idx = simple_mlm_objective(input_ids, token_indexer)
+    random_tensor = torch.rand(input_ids.shape).cuda(input_ids.device)
+    random_ids = torch.randint(max(token_indexer.all_special_ids) + 1, token_indexer.vocab_size, input_ids.shape).to(input_ids.device)
+    predict_original = random_tensor < FLAGS.preserve_fraction
+    predict_random = (FLAGS.preserve_fraction < random_tensor) & \
+                     (random_tensor < (FLAGS.random_switch_fraction + FLAGS.preserve_fraction))
+    mixed_masked_ids = torch.where(predict_original & is_target_idx,
+                                   input_ids,
+                                   torch.where(predict_random & is_target_idx,
+                                               random_ids,
+                                               masked_ids))
+    return mixed_masked_ids, is_target_idx

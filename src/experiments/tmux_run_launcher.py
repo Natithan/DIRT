@@ -1194,7 +1194,7 @@ BASE_SERVER = "arwen"
 #         'description': current_description,
 #         'server': current_server}
 
-current_server = 'arwen'
+current_server = 'frodo'
 current_lambda = 1
 current_source_run = "lambda_0.3_HFpretrain_WBG"
 current_run_name = f"retrained_self_pred_from_{current_source_run}"
@@ -1219,6 +1219,30 @@ RUNS[current_run_name] = {'commands': [
     'description': current_description,
     'server': current_server}
 
+current_server = 'rose'
+current_lambda = 1
+current_source_run = "vanilla"
+current_run_name = f"retrained_self_pred_from_{current_source_run}"
+current_description = f"Test for slow features: see if a new self-predictor can less quickly get it right when " \
+                      f"representations haven't been influenced by a previous self-prediction objective (aka when building on {current_source_run})"
+RUNS[current_run_name] = {'commands': [
+    f"ssh {current_server}",
+
+    f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+    f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+    f" --d_batch=8 --max_seq_length=256 "
+    f" --DIR=combo"
+    f" --freeze_main_model"
+    f" --retrain_self_predictor"
+    f" --use_HFpretrained_weights"
+    f" --DIR_loss_fraction={current_lambda}",
+
+    # f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+    # f' --pretrained_model={current_run_name} --max_GPUs=1 '
+    # f' --overrides "run_name={current_run_name}"; cd ..'
+],
+    'description': current_description,
+    'server': current_server}
 
 def track_run_in_sheets(run_name, commands, description, server):
     SPREADSHEET_ID = '1JBFTrsLGd35ZZ2ATbOmv6WzF57A2xtEhneU5vQQXtj4'

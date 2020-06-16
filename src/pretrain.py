@@ -9,7 +9,7 @@ from allennlp.nn.util import move_to_device
 
 from torch.utils.data import DataLoader, DistributedSampler
 
-from wrappers import MLMModelWrapper, MODEL_MAPPING
+from wrappers import PretrainObjectiveModelWrapper, MODEL_MAPPING
 
 from pathlib import Path
 import torch.optim as optim
@@ -70,7 +70,7 @@ def main(_):
         data_dict = get_data_dict()
     train_dataset, test_dataset, val_dataset = (data_dict[key] for key in
                                                        ('train', 'test', 'val'))
-    model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model])
+    model = PretrainObjectiveModelWrapper(MODEL_MAPPING[FLAGS.model])
     distributed_wrapper(train,model, run_dir, train_dataset, val_dataset)
     model.cuda(FLAGS.device_idxs[0])
 

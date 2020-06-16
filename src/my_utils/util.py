@@ -6,7 +6,7 @@ import torch
 from torch import distributed as dist
 
 from config import FLAGS, MODEL_RELEVANT_FLAGS
-from wrappers import MLMModelWrapper, MODEL_MAPPING
+from wrappers import PretrainObjectiveModelWrapper, MODEL_MAPPING
 import logging as log
 
 
@@ -42,7 +42,7 @@ def load_pretrained_model_for_SG():
             updated_flags.append(f)
     if updated_flags:
         log.info(f"Changed the following flags to that of the pretrained model: {updated_flags}")
-    wrapped_model = MLMModelWrapper(MODEL_MAPPING[FLAGS.model],finetune_stage=True)
+    wrapped_model = PretrainObjectiveModelWrapper(MODEL_MAPPING[FLAGS.model], finetune_stage=True)
 
     # A hack because I renamed one of the models modules :P
     old_state_dict = torch.load(model_path, map_location=torch.device(FLAGS.device_idxs[0]))

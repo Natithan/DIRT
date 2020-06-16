@@ -29,7 +29,7 @@ log.basicConfig(
 class DIRTLMHead(Model):
     def __init__(self, finetune_stage=False):
         """
-        finetune_stage: if True, don't do masking of words and internal activation
+        finetune_stage: if True, don't do sentence order prediction, masking of words, OR internal activation
         """
         super().__init__(Vocabulary())
         self.embedder = AlbertEmbedder()
@@ -53,6 +53,7 @@ class DIRTLMHead(Model):
             )
             self.learn_phase = True
         self.lm_head = LMHead()
+        self.sop_head = SOPHead()
         self.metrics_dict = {}
         self.finetune_stage = finetune_stage
         self.dropout = MyDropout()
@@ -64,10 +65,11 @@ class DIRTLMHead(Model):
             modules_to_freeze = [self.embedder, self.shared_encoder_block, self.lm_head]
             for m in modules_to_freeze:
                 for p in m.parameters():
-                    p.requires_grad=False
+                    p.requires_grad = False
 
-
-
+        self.pooler = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
+        self.pooler_activation = nn.Tanh()
+        self.sop_head = SOPHead()
 
     def load_HFpretrained_weights(self):
         hf_state_dict = AlbertForMaskedLM.from_pretrained(FLAGS.hf_model_handle).state_dict()
@@ -120,7 +122,8 @@ class DIRTLMHead(Model):
     def forward(self, input_ids, padding_mask, masked_lm_labels=None, token_type_ids=None):
 
         # ENCODING
-        clean = (FLAGS.DIR != 'combo') or (not self.training) or (self.finetune_stage and not FLAGS.replace_self_predictions)
+        clean = (FLAGS.DIR != 'combo') or (not self.training) or (
+                    self.finetune_stage and not FLAGS.replace_self_predictions)
         if FLAGS.DIR == 'combo':
             normalizer = FLAGS.nb_encoder_layers - FLAGS.top_down_distance
 
@@ -151,10 +154,11 @@ class DIRTLMHead(Model):
         vocab_scores = self.lm_head(encoded)
 
         if masked_lm_labels is not None:
-            targets = process_targets_for_loss(masked_lm_labels)
+            targets = process_targets_for_loss(masked_lm_labels, token_type_ids)
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, get_my_tokenizer().vocab_size)
             MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
                                              targets)
+
             result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
                     1 - FLAGS.DIR_loss_fraction) * MLM_loss if FLAGS.DIR else MLM_loss
 
@@ -167,6 +171,10 @@ class DIRTLMHead(Model):
                 for layer, loss in enumerate(layer_loss_list):
                     self.metrics_dict[f'DIR_loss_layer_{layer}'] = loss.item() if isinstance(loss,
                                                                                              torch.Tensor) else loss
+        if token_type_ids is not None:
+            pooled_output = self.pooler_activation(self.pooler(encoded[:, 0]))
+            SOP_loss = self.sop_head(pooled_output, token_type_ids)
+            self.metrics_dict['SOP_loss'] = SOP_loss.item()
 
         result_dict['vocab_scores'] = vocab_scores
 
@@ -204,6 +212,28 @@ class LMHead(nn.Module):
 
     def forward(self, hidden_states):
         return self.decoder(self.LayerNorm(self.activation(self.dense(hidden_states))))
+
+
+class SOPHead(nn.Module):
+    """
+    Outputs loss for next sentence prediction
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.dense = nn.Linear(FLAGS.d_hidden, 2)
+
+    def forward(self, input_tensor, token_type_ids):
+        # Simple binary classification. Note that 0 is "correct order" and 1 is
+        # "switched order".
+
+        logits = self.dense(input_tensor)
+        log_probs = nn.LogSoftmax(logits, axis=-1)  # TODO finish this
+        labels = tf.reshape(labels, [-1])
+        one_hot_labels = tf.one_hot(labels, depth=2, dtype=tf.float32)
+        per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
+        loss = tf.reduce_mean(per_example_loss)
+        return (loss, per_example_loss, log_probs)
 
 
 class MyDropout(nn.Dropout):

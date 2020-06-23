@@ -25,7 +25,8 @@ MODEL_RELEVANT_FLAGS = ["model",
                         "nb_encoder_layers",
                         "nb_feedforward_layers",
                         "relative_attention_num_buckets",
-                        "hf_model_handle"]
+                        "hf_model_handle",
+                        "DIR_size"]
 FLAGS = flags.FLAGS
 flags.DEFINE_integer("d_batch", 2, "Batch size. If DIR is not none, this is also the number of negative samples + 1")
 flags.DEFINE_float("DIR_loss_fraction", 0.95,
@@ -82,6 +83,8 @@ flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked dur
 flags.DEFINE_string("model", "my_model", "Name of the model to use (see MODEL_MAPPING)")
 flags.DEFINE_string("DIR", '',
                     "Which variant of distributed internal regression to employ. Options are: combo, top_down, from_projection, or empty if not using DIR (default)")
+flags.DEFINE_string("DIR_size",'normal','Two options: "small" for a one-layer self-predictor, and "normal" for a two-layer '
+                                        'one with hidden dimension d_ffn (aka same as the transformer feedforward blocks)')
 flags.DEFINE_integer("d_emb", 128, "Size of token encodings before contextualization")
 flags.DEFINE_integer("d_hidden", 2048, "Size of token encodings in hidden layers (contextualized)")
 flags.DEFINE_integer("d_ff", 8192, "Number of hidden units in feedforward parts of attention blocks")

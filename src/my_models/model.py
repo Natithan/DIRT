@@ -25,6 +25,24 @@ log.basicConfig(
     format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
 )  # noqa
 
+class SelfPredictorBlock(nn.Module):
+    """
+    Part of anticipation module that transforms each input before it is fed to the combiner
+    """
+    def __init__(self):
+        super().__init__()
+        if FLAGS.DIR_size == 'small':
+            self.linear = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
+        else:
+            self.linear_in = nn.Linear(FLAGS.d_hidden, FLAGS.d_ff)
+            self.linear_out = nn.Linear(FLAGS.d_ff, FLAGS.d_hidden)
+        self.activation = get_activation()
+
+    def forward(self, hidden_in):
+        if FLAGS.DIR_size == 'small':
+            return self.activation(self.linear(hidden_in))
+        else:
+            return self.linear_out(self.activation(self.linear_in(hidden_in)))
 
 class DIRTLMHead(Model):
     def __init__(self, finetune_stage=False):
@@ -36,21 +54,9 @@ class DIRTLMHead(Model):
         self.shared_encoder_block = EncoderBlock(finetune_stage)
         if FLAGS.DIR == 'combo':
             self.combiner = nn.Linear(3 * FLAGS.d_hidden, FLAGS.d_hidden)
-            self.shared_top_down_predictor = nn.Sequential(
-                nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
-                get_activation(),
-                nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
-            )
-            self.shared_from_left_predictor = nn.Sequential(
-                nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
-                get_activation(),
-                nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
-            )
-            self.shared_from_right_predictor = nn.Sequential(
-                nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
-                get_activation(),
-                nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
-            )
+            self.shared_top_down_predictor = SelfPredictorBlock()
+            self.shared_from_left_predictor = SelfPredictorBlock()
+            self.shared_from_right_predictor = SelfPredictorBlock()
             self.learn_phase = True
         self.lm_head = LMHead()
         self.metrics_dict = {}
@@ -296,6 +302,7 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
         for layer_idx, module in enumerate(layers):  # TODO fix heavy mem overhead
             if FLAGS.DIR == 'combo' and (layer_idx + FLAGS.top_down_distance < len(layers)) and (not self.clean):
                 in_activations, padding_mask = inputs[:2]
+                # if not FLAGS.slicewise: #TODO
                 masked_inputs, DIRT_mask = apply_sequence_mask(in_activations)
                 contextualizer = layers[layer_idx:layer_idx + FLAGS.top_down_distance]  # Clean true by default
                 top_down_inputs, _, _, _ = contextualizer(masked_inputs, padding_mask)

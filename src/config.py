@@ -9,7 +9,7 @@ from absl import flags
 from pathlib2 import Path
 from transformers import RobertaTokenizer
 
-from constants import READ_ONLY_ROOT, WRITE_ROOT
+from constants import STORAGE_ROOT
 from my_utils.flag_util import DefaultOrderedDict, get_gpus_with_enough_memory
 
 logger = logging.getLogger(__name__)
@@ -35,26 +35,26 @@ flags.DEFINE_integer("model_save_interval", 300,
 flags.DEFINE_integer("num_serialized_models_to_keep", 1, "Number of serialized trained models to store.")
 flags.DEFINE_float("dropout_rate", .1, "Dropout rate")
 flags.DEFINE_string("mode", "", "Flag to allow python console command line argument")
-flags.DEFINE_string("pretrain_data_folder", Path(READ_ONLY_ROOT, "data/pretraining").as_posix(),
-                    "Folder with subfolders corresponding to different dataset to all use as pretraining data")
+flags.DEFINE_string("pretrain_data_folder", Path(STORAGE_ROOT, "data/pretraining").as_posix(),
+                    "Folder with subfolders corresponding to different dataset to are used as pretraining data")
 flags.DEFINE_float("pretrain_data_fraction", 0.1,
                    "Fraction of the total data available in the pretraining corpora to use during pretraining."
                    "Added because training on all available data takes too long with 1 GPU")
-flags.DEFINE_string("output_folder", Path(WRITE_ROOT, "output", "pretraining").as_posix(),
+flags.DEFINE_string("output_folder", Path(STORAGE_ROOT, "output", "pretraining").as_posix(),
                     "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
                     "Folder with trained models and tensorboard logs")
 flags.DEFINE_string("description", "",
                     "Informal description of a run, will be stored in description.txt in the run_name folder")
 flags.DEFINE_bool("use_HFpretrained_weights", False, "Whether to initialize the model with hf pretrained weights.")
-flags.DEFINE_string("hf_model_handle", "albert-base-v1",
+flags.DEFINE_string("hf_model_handle", "https://s3.amazonaws.com/models.huggingface.co/bert/albert-base-v1-spiece.model",
                     "Name of the huggingface model handle to use for both tokenizer "
                     "and pretrained weights (if those are loaded")  # v2 seems to be faulty: https://github.com/huggingface/transformers/pull/1683#issuecomment-556001607
 flags.DEFINE_bool("fresh_data", False, "If True, don't use a pickled version of the data input if that existed")
 flags.DEFINE_string("saved_pretrained_model_path", "",
                     "Path to a checkpoint of a pretrained model. "
                     "If \"pretrained_model\" flag is provided, equals WRITE_ROOT/output/my_model/<pretrained_model>/best.th")
-flags.DEFINE_string("cache_dir", Path(READ_ONLY_ROOT, "cache").as_posix(),
+flags.DEFINE_string("cache_dir", Path(STORAGE_ROOT, "cache").as_posix(),
                     "Directory to store a cache of 🤗 transformers tokenizer ")
 flags.DEFINE_integer("SG_max_data_size", -1, "If negative, the full data is used for each task. "
                                              "If positive, this is the maximum index up to which samples are considered per epoch "
@@ -68,7 +68,7 @@ flags.DEFINE_integer("num_epochs", 5,
                      "Number of epochs to train for.")  # Default low because biggg epochs. Also keeping every epoch for this reason
 flags.DEFINE_float("learning_rate", 10e-8, "Initial learning rate")
 
-flags.DEFINE_string("blob_folder", Path(READ_ONLY_ROOT, "blobs").as_posix(),
+flags.DEFINE_string("blob_folder", Path(STORAGE_ROOT, "blobs").as_posix(),
                     "Path to store pickled versions of the pretraining data")
 flags.DEFINE_bool("old_pretrain_data", False,
                   "Whether to do pretraining on an old version of the pretraining data: only the train split of the Gutenberg corpus.")
@@ -151,7 +151,7 @@ def process_flags():
         "You should specify only one of \"saved_pretrained_model_path\" and \"saved_pretrained_model_path\""
     if FLAGS.pretrained_model:
         checkpoint = f'{FLAGS.pretrained_model_checkpoint}.th'
-        FLAGS.saved_pretrained_model_path = Path(WRITE_ROOT, "output", "pretraining", FLAGS.pretrained_model,
+        FLAGS.saved_pretrained_model_path = Path(STORAGE_ROOT, "output", "pretraining", FLAGS.pretrained_model,
                                                  checkpoint).as_posix()
     # if FLAGS.config:
 

@@ -11,7 +11,7 @@ from typing import Iterable
 from pathlib2 import Path
 
 from config import FLAGS
-from constants import SMALL_SHARED_SERVER_DIR
+from constants import STORAGE_ROOT
 
 log.basicConfig(
     format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
@@ -674,7 +674,7 @@ def main(cl_arguments):
             current_tasks_val_results = evaluate_and_write(args, model, [task], splits_to_write, cuda_device)
             results_dict = {**results_dict, **current_tasks_val_results}
 
-        tabular_results_csv = os.path.join(SMALL_SHARED_SERVER_DIR, "tabular_results.csv")
+        tabular_results_csv = os.path.join(STORAGE_ROOT, "tabular_results.csv")
 
         existing_results_df = pd.read_csv(tabular_results_csv,index_col=False)
         new_results_df = pd.DataFrame.from_dict(

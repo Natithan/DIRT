@@ -8,7 +8,7 @@ from pathlib2 import Path
 from torch.utils.data import Dataset
 from torch.utils.data.dataset import IterableDataset
 
-from constants import DECODER_START_TOKEN, READ_ONLY_ROOT
+from constants import DECODER_START_TOKEN, STORAGE_ROOT
 import os
 from config import FLAGS, get_my_tokenizer
 from tqdm import tqdm
@@ -173,6 +173,7 @@ class CombinedSplitDataset(IterableDataset):
             self.row_index = None
 
     def __len__(self):
+        # return 1 #TODO this to keep the debugger from calling len too early and causing data creation
         length_blob_path = Path(FLAGS.blob_folder, f'{self.split_name}_tensor_combined_length').as_posix()
         if os.path.exists(length_blob_path) and not FLAGS.fresh_data:
             length = torch.load(length_blob_path,map_location='cpu')
@@ -206,7 +207,7 @@ def get_data_dict():
     '''
     Returns a dictionary containing train, test and validation instance lists, as well as the vocab created from train and validation data
     '''
-    blob_dir_path = Path(READ_ONLY_ROOT, 'blobs')
+    blob_dir_path = Path(STORAGE_ROOT, 'blobs')
     if not os.path.exists(blob_dir_path):
         os.mkdir(blob_dir_path)
 

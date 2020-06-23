@@ -1,26 +1,11 @@
 import git
 import subprocess
 
-# import os
-# print(os.getcwd())
-# import paramiko
-# hostname = 'arwen.cs.kuleuven.be'
-# myuser   = 'nathan'
-# mySSHK   = '/path/to/sshkey.pub'
-# sshcon   = paramiko.SSHClient()  # will create the object
-# sshcon.set_missing_host_key_policy(paramiko.AutoAddPolicy()) # no known_hosts error
-# sshcon.connect(hostname, username=myuser, key_filename=mySSHK) # no passwd needed
-# ssh = paramiko.SSHClient()
-# ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-#
-# ssh.connect('arwen.cs.kuleuven.be', username='nathan', password=password)
-# ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(cmd_to_execute)
-# HOST="arwen"
-# # Ports are handled in ~/.ssh/config since we use OpenSSH
-# COMMAND="python experiments/tmux_run_launcher.py"
-# import os
-#
-# s = subprocess.run(["wsl", "ssh","arwen"],input='python experiments/git_launcher_wrapper.py',text=True)
+
+# Logic behind this: First do the commit locally.
+# Then make sure to sync the .git folder to remote, as the current commit is logged in the outputs sheet.
+# Then run the tmux launcher on one of the always-on remotes.
+
 
 COMMIT_MESSAGE = 'Automatic commit for experiment'
 
@@ -35,7 +20,6 @@ def git_push():
         print('Some error occured while pushing the code')
 
 git_push()
-# subprocess.run('rsync', '-chavzP', "/mnt/c/Users/natha/PycharmProjects/phd/.git", 'nathan@arwen.cs.kuleuven.be:/cw/working-arwen/nathan/phd/'])
 subprocess.run(["wsl", 'rsync', '-chavzP', "/mnt/c/Users/natha/PycharmProjects/phd/.git", 'nathan@arwen.cs.kuleuven.be:/cw/working-arwen/nathan/phd/'])
 subprocess.run(["wsl", "ssh","arwen"],input='cd experiments;python tmux_run_launcher.py',text=True)
 

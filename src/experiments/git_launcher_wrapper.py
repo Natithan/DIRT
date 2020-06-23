@@ -35,6 +35,7 @@ def git_push():
         print('Some error occured while pushing the code')
 
 git_push()
-subprocess.run(['rsync', '-chavzP', "/mnt/c/Users/natha/PycharmProjects/phd/.git", 'nathan@arwen.cs.kuleuven.be:/cw/working-arwen/nathan/phd/'])
+# subprocess.run('rsync', '-chavzP', "/mnt/c/Users/natha/PycharmProjects/phd/.git", 'nathan@arwen.cs.kuleuven.be:/cw/working-arwen/nathan/phd/'])
+subprocess.run(["wsl", 'rsync', '-chavzP', "/mnt/c/Users/natha/PycharmProjects/phd/.git", 'nathan@arwen.cs.kuleuven.be:/cw/working-arwen/nathan/phd/'])
 subprocess.run(["wsl", "ssh","arwen"],input='cd experiments;python tmux_run_launcher.py',text=True)
 

@@ -2,7 +2,6 @@ import time
 
 import libtmux
 from numpy.ma import arange
-from pathlib2 import Path
 import pickle
 import os.path
 import subprocess

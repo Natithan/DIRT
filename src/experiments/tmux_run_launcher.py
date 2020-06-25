@@ -13,7 +13,6 @@ from pprint import pprint
 
 import git
 import time
-from constants import HOSTNAME, WRITE_ROOT, READ_ONLY_ROOT
 
 from config import FLAGS
 

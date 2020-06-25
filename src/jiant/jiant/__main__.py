@@ -8,7 +8,7 @@ To debug this, run with -m ipdb:
 import logging as log
 from typing import Iterable
 
-from pathlib2 import Path
+from pathlib import Path
 
 from config import FLAGS
 from constants import STORAGE_ROOT

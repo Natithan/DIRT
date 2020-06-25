@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from absl import flags
 # %% FLAGS
-from pathlib2 import Path
+from pathlib import Path
 from transformers import RobertaTokenizer
 
 from constants import STORAGE_ROOT
@@ -47,7 +47,8 @@ flags.DEFINE_string("run_name", datetime.now().strftime("%b_%d_%Hh%Mm%Ss"),
 flags.DEFINE_string("description", "",
                     "Informal description of a run, will be stored in description.txt in the run_name folder")
 flags.DEFINE_bool("use_HFpretrained_weights", False, "Whether to initialize the model with hf pretrained weights.")
-flags.DEFINE_string("hf_model_handle", "https://s3.amazonaws.com/models.huggingface.co/bert/albert-base-v1-spiece.model",
+flags.DEFINE_string("hf_model_handle", "albert-base-v1",
+    # "hf_model_handle", "https://s3.amazonaws.com/models.huggingface.co/bert/albert-base-v1-spiece.model",
                     "Name of the huggingface model handle to use for both tokenizer "
                     "and pretrained weights (if those are loaded")  # v2 seems to be faulty: https://github.com/huggingface/transformers/pull/1683#issuecomment-556001607
 flags.DEFINE_bool("fresh_data", False, "If True, don't use a pickled version of the data input if that existed")
@@ -79,6 +80,7 @@ flags.DEFINE_string("objective", "simple_mlm",
 flags.DEFINE_float("masking_fraction", .15, "Fraction of tokens to be masked during MLM pretraining")
 flags.DEFINE_float("random_switch_fraction", .10, "Fraction of masked tokens that are actually replaced with a random vocabulary word")
 flags.DEFINE_float("preserve_fraction", .10, "Fraction of masked tokens that are actually replaced with the original word")
+
 
 # Flags that determine what the model looks like
 flags.DEFINE_string("model", "my_model", "Name of the model to use (see MODEL_MAPPING)")
@@ -167,10 +169,11 @@ MLM_OBJECTIVE_MAPPING = OrderedDict(
 )
 TOKENIZER = None
 
-
+HANDLE_TO_URL = {"albert-base-v1":"https://s3.amazonaws.com/models.huggingface.co/bert/albert-base-v1-spiece.model"}
 def get_my_tokenizer():
     global TOKENIZER  # To not reload tokenizer with different calls
     if TOKENIZER is None:
-        TOKENIZER = AlbertTokenizer.from_pretrained(FLAGS.hf_model_handle)
-        TOKENIZER.max_len = FLAGS.max_seq_length
+        TOKENIZER = AlbertTokenizer.from_pretrained(HANDLE_TO_URL[FLAGS.hf_model_handle])
+        TOKENIZER.model_max_length = FLAGS.max_seq_length
     return TOKENIZER
+

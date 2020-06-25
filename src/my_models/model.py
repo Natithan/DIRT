@@ -53,7 +53,10 @@ class DIRTLMHead(Model):
             )
             self.learn_phase = True
         self.lm_head = LMHead()
-        self.sop_head = SOPHead()
+        if FLAGS.objective == "albert_mlm_sop":
+            self.sop_head = SOPHead()
+            self.pooler = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
+            self.pooler_activation = nn.Tanh()
         self.metrics_dict = {}
         self.finetune_stage = finetune_stage
         self.dropout = MyDropout()
@@ -67,9 +70,7 @@ class DIRTLMHead(Model):
                 for p in m.parameters():
                     p.requires_grad = False
 
-        self.pooler = nn.Linear(FLAGS.d_hidden, FLAGS.d_hidden)
-        self.pooler_activation = nn.Tanh()
-        self.sop_head = SOPHead()
+
 
     def load_HFpretrained_weights(self):
         hf_state_dict = AlbertForMaskedLM.from_pretrained(FLAGS.hf_model_handle).state_dict()
@@ -104,7 +105,8 @@ class DIRTLMHead(Model):
         allowed_from_scratch_params = [
             'relative_attention_bias',
             'top_down_regressor',
-            'combiner', 'shared_top_down_predictor', 'shared_from_left_predictor', 'shared_from_right_predictor'
+            'combiner', 'shared_top_down_predictor', 'shared_from_left_predictor', 'shared_from_right_predictor',
+            'sop_head'
 
         ]
         for m in missing:
@@ -119,7 +121,7 @@ class DIRTLMHead(Model):
     def get_metrics(self, **kwargs):
         return self.metrics_dict.copy()  # copy needed to avoid overlapping train and validation metrics
 
-    def forward(self, input_ids, padding_mask, masked_lm_labels=None, token_type_ids=None):
+    def forward(self, input_ids, padding_mask, sentence_order_labels, masked_lm_labels=None, token_type_ids=None):
 
         # ENCODING
         clean = (FLAGS.DIR != 'combo') or (not self.training) or (
@@ -154,13 +156,10 @@ class DIRTLMHead(Model):
         vocab_scores = self.lm_head(encoded)
 
         if masked_lm_labels is not None:
-            targets = process_targets_for_loss(masked_lm_labels, token_type_ids)
+            targets = process_targets_for_loss(masked_lm_labels)
             vocab_scores_contiguous = vocab_scores.contiguous().view(-1, get_my_tokenizer().vocab_size)
             MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
                                              targets)
-
-            result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
-                    1 - FLAGS.DIR_loss_fraction) * MLM_loss if FLAGS.DIR else MLM_loss
 
             self.metrics_dict['crossentropy_loss'] = MLM_loss.item()
             self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
@@ -171,11 +170,16 @@ class DIRTLMHead(Model):
                 for layer, loss in enumerate(layer_loss_list):
                     self.metrics_dict[f'DIR_loss_layer_{layer}'] = loss.item() if isinstance(loss,
                                                                                              torch.Tensor) else loss
-        if token_type_ids is not None:
-            pooled_output = self.pooler_activation(self.pooler(encoded[:, 0]))
-            SOP_loss = self.sop_head(pooled_output, token_type_ids)
-            self.metrics_dict['SOP_loss'] = SOP_loss.item()
 
+        SOP_loss = 0
+        if sentence_order_labels is not None and (FLAGS.objective == "albert_mlm_sop"):
+            pooled_output = self.pooler_activation(self.pooler(encoded[:, 0]))
+            SOP_loss = self.sop_head(pooled_output, sentence_order_labels)
+            self.metrics_dict['SOP_loss'] = SOP_loss.item()
+        E2E_loss = MLM_loss + SOP_loss
+        self.metrics_dict['e2e_loss'] = E2E_loss.item()
+        result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
+                    1 - FLAGS.DIR_loss_fraction) * E2E_loss if FLAGS.DIR else E2E_loss
         result_dict['vocab_scores'] = vocab_scores
 
         return result_dict  # Dictionary format for AllenNLP trainer loop
@@ -223,17 +227,18 @@ class SOPHead(nn.Module):
         super().__init__()
         self.dense = nn.Linear(FLAGS.d_hidden, 2)
 
-    def forward(self, input_tensor, token_type_ids):
+    def forward(self, input_tensor, sentence_order_labels):
         # Simple binary classification. Note that 0 is "correct order" and 1 is
         # "switched order".
 
         logits = self.dense(input_tensor)
-        log_probs = nn.LogSoftmax(logits, axis=-1)  # TODO finish this
-        labels = tf.reshape(labels, [-1])
-        one_hot_labels = tf.one_hot(labels, depth=2, dtype=tf.float32)
-        per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
-        loss = tf.reduce_mean(per_example_loss)
-        return (loss, per_example_loss, log_probs)
+        loss = nn.CrossEntropyLoss()(logits, sentence_order_labels)
+        # log_probs = nn.LogSoftmax(logits, dim=-1)
+        # labels = tf.reshape(sentence_order_labels, [-1])
+        # one_hot_labels = tf.one_hot(labels, depth=2, dtype=tf.float32)
+        # per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
+        # loss = tf.reduce_mean(per_example_loss)
+        return loss
 
 
 class MyDropout(nn.Dropout):

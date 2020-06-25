@@ -37,7 +37,7 @@ class PretrainObjectiveModelWrapper(Model):
             if not any([s in m for s in self_prediction_parameters]):
                 raise ValueError(f'Unexpected mismatch in loading state dict: {m} not present in pretrained.')
 
-    def forward(self, input_ids,
+    def forward(self, input_ids,sentence_order_labels,
                 token_type_ids=None):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
         new_input_dict = {}
         new_input_dict['padding_mask'] = input_ids != self.token_indexer.pad_token_id
@@ -49,7 +49,19 @@ class PretrainObjectiveModelWrapper(Model):
         new_input_dict['masked_lm_labels'] = torch.where(
             is_target_idx, input_ids,
             torch.ones_like(input_ids) * (-100))
-        new_input_dict['token_type_ids'] = token_type_ids
+        if FLAGS.objective == 'simple_mlm':
+            new_input_dict['token_type_ids'] = token_type_ids
+        elif FLAGS.objective == 'albert_mlm_sop':
+            seq_length = input_ids.shape[1]
+            sep_idxs = torch.argmax((input_ids == self.token_indexer.sep_token_id) * reversed(
+                torch.arange(seq_length).to(input_ids.device)), 1, keepdim=True)
+            new_input_dict['token_type_ids'] = \
+                torch.cat([
+                    torch.cat([
+                        torch.zeros(sep_idx), torch.ones(seq_length - sep_idx)
+                    ], dim=-1).unsqueeze(0) for sep_idx in sep_idxs
+                ], dim=0).to(torch.long).to(input_ids.device)
+            new_input_dict['sentence_order_labels'] = sentence_order_labels
         result_dict = self.model(**new_input_dict)
         result_dict['mask'] = (new_input_dict['input_ids'] == self.token_indexer.mask_token_id)
         return result_dict

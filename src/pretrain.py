@@ -116,7 +116,7 @@ def train(rank,world_size,model, run_dir, train_dataset, val_dataset):
     loader = get_loader(train_dataset)
     val_loader = get_loader(val_dataset)
     checkpointer = MyCheckpointer(serialization_dir=run_dir,
-                                num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep)
+                                  num_serialized_models_to_keep=FLAGS.num_serialized_models_to_keep)
     trainer = MyTrainer(model=model,
                                      optimizer=optimizer,
                                      data_loader=loader,

@@ -588,7 +588,7 @@ def get_data_dict_old():
     Returns a dictionary containing train, test and validation instance lists, as well as the vocab created from train and validation data
     '''
     log.info("Loading old Gutenberg-only data.")
-    blob_dir_path = Path(READ_ONLY_ROOT, 'blobs')
+    blob_dir_path = Path(STORAGE_ROOT, 'blobs')
     if not os.path.exists(blob_dir_path):
         os.mkdir(blob_dir_path)
     train_dataset, test_dataset, val_dataset = [

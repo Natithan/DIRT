@@ -1318,7 +1318,8 @@ BASE_SERVER = "arwen"
 
 for current_server, current_lambda in zip(
 
-        ['sauron']#,'sauron'],
+        ['sauron']#,'sauron']
+            ,
         [0]#,0.4]
 ):
     current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}"

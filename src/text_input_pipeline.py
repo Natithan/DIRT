@@ -17,7 +17,8 @@ import pandas as pd
 import random
 import nltk
 
-nltk.download('punkt')
+nltk.download('punkt', download_dir=STORAGE_ROOT)
+nltk.data.path.append(STORAGE_ROOT)
 SENTENCE_TOKENIZER = nltk.data.load('tokenizers/punkt/english.pickle')
 
 corpus_to_data = {
@@ -198,7 +199,8 @@ class SingleDataset():
             unflattened_ids = [[self.token_indexer.encode(sentence, add_special_tokens=False)
                                 for sentence in self.split_into_sentences(text)]
                                for text in df['text']
-                               ] if do_SOP else [self.token_indexer.encode(text, add_special_tokens=False) for text in df['text']]
+                               ] if do_SOP else [self.token_indexer.encode(text, add_special_tokens=False) for text in
+                                                 df['text']]
             all_documents += unflattened_ids
         elif self.corpus == 'bookcorpus':
             paragraph = ""
@@ -211,7 +213,7 @@ class SingleDataset():
                 paragraph += line + " "
                 if line == "":
                     all_documents += [[self.token_indexer.encode(sentence, add_special_tokens=False)
-                                      for sentence in self.split_into_sentences(paragraph)]] if do_SOP else\
+                                       for sentence in self.split_into_sentences(paragraph)]] if do_SOP else \
                         [self.token_indexer.encode(paragraph, add_special_tokens=False)]
                     paragraph = ""
 
@@ -226,6 +228,8 @@ class SingleDataset():
         tensor_list = []
         sentence_order_list = []
         if FLAGS.objective == 'albert_mlm_sop':
+            # To use as not-in-order segment for one-segment documents
+            global previous_segment
 
             # Account for [CLS], [SEP], [SEP]
             max_num_tokens = FLAGS.max_seq_length - 3
@@ -252,7 +256,8 @@ class SingleDataset():
                 i = 0
                 while i < len(document):
                     segment = document[i]
-                    current_chunk.append(segment)
+                    if len(segment) > 0:
+                        current_chunk.append(segment)
                     current_length += len(segment)
                     if i == len(document) - 1 or current_length >= target_seq_length:
                         if current_chunk:
@@ -268,20 +273,20 @@ class SingleDataset():
 
                             tokens_b = []
                             # Random next
-                            not_in_order = False
+                            # not_in_order = False
                             # Random next sentence not an option for me
                             if len(current_chunk) == 1:  # or (FLAGS.random_next_sentence and random.random() < 0.5):
                                 # Case where there was only 1 sentence left for the current chunk:
                                 # Use the previous segment (whether it was from the same document or not)
                                 # switch them, and mark as 'not in order'
                                 not_in_order = True
-                                target_b_length = target_seq_length - len(tokens_a)
 
                                 # Original code uses random chunk for not-in order b. I use previous token_b, and flip to be sure of not in order
                                 # # This should rarely go for more than one iteration for large
                                 # # corpora. However, just to be careful, we try to make sure that
                                 # # the random document is not the same as the document
                                 # # we're processing.
+                                # target_b_length = target_seq_length - len(tokens_a)
                                 # for _ in range(10):
                                 #     random_document_index = rng.randint(0, len(all_documents) - 1)
                                 #     if random_document_index != document_index:
@@ -293,17 +298,18 @@ class SingleDataset():
                                 #     tokens_b.extend(random_document[j])
                                 #     if len(tokens_b) >= target_b_length:
                                 #         break
-                                if len(tensor_list) > 0:
-                                    previous_tensor = tensor_list[-1][-1]
-                                    sep_idxs = [i for i, el in enumerate(previous_tensor) if
-                                                el == self.token_indexer.sep_token_id]
-                                    assert len(sep_idxs) == 2
-                                    # this b might be too big, but it will get truncated later anyway
-                                    tokens_b = previous_tensor[sep_idxs[0] + 1:sep_idxs[1]].tolist()
-                                    tokens_a, tokens_b = tokens_b, tokens_a
+                                if previous_segment is not None:
+                                    # previous_tensor = tensor_list[-1][-1]
+                                    # sep_idxs = [i for i, el in enumerate(previous_tensor) if
+                                    #             el == self.token_indexer.sep_token_id]
+                                    # assert len(sep_idxs) == 2
+                                    # # this b might be too big, but it will get truncated later anyway
+                                    # tokens_b = previous_tensor[sep_idxs[0] + 1:sep_idxs[1]].tolist()
+
+                                    tokens_a, tokens_b = previous_segment, tokens_a
                                 else:
                                     # If it happens that we have a too-short document at the very start of this collection of documents, we just skip it
-                                    log.info(f'One-sentence document without predecessor in {path}: skipping.')
+                                    log.info(f'One-sentence document without predecessor, in {path}: skipping.')
                                     i += 1
                                     continue
 
@@ -322,10 +328,14 @@ class SingleDataset():
                                 not_in_order = False
                                 for j in range(a_end, len(current_chunk)):
                                     tokens_b.extend(current_chunk[j])
+                            if (len(tokens_a) == 0) or (len(tokens_b) == 0):
+                                print('breakpoint here')
+                                raise
                             self.truncate_seq_pair(tokens_a, tokens_b, max_num_tokens)
 
-                            assert len(tokens_a) >= 1
-                            assert len(tokens_b) >= 1
+                            if (len(tokens_a) == 0) or (len(tokens_b) == 0):
+                                print('breakpoint here')
+                                raise
                             current_sequence = self.token_indexer.prepare_for_model(tokens_a, tokens_b,
                                                                                     truncation_strategy='do_not_truncate',
                                                                                     pad_to_max_length=True)['input_ids']
@@ -362,6 +372,9 @@ class SingleDataset():
                         current_chunk = []
                         current_length = 0
                     i += 1
+                    if len(tensor_list) > 0:
+                        assert len(tokens_b) > 0
+                        previous_segment = tokens_b.copy()
 
         else:
             max_raw_seq_length = FLAGS.max_seq_length - 2  # Excluding [CLS] at start and [SEP] at end
@@ -372,7 +385,6 @@ class SingleDataset():
                                                                             pad_to_max_length=True)['input_ids']
                     tensor_list.append(torch.tensor(current_sequence).unsqueeze(
                         0))
-
         return {"ids": [torch.cat(tensor_list).to(torch.int32)],
                 "order_label": sentence_order_list}
 
@@ -475,7 +487,6 @@ class CombinedSplitDataset(IterableDataset):
             self.row_index = None
 
     def __len__(self):
-        return 1  # TODO this to keep the debugger from calling len too early and causing data creation
         length_blob_path = Path(FLAGS.blob_folder, f'{self.split_name}_tensor_combined_length').as_posix()
         if os.path.exists(length_blob_path) and not FLAGS.fresh_data:
             length = torch.load(length_blob_path, map_location='cpu')

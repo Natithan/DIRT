@@ -1320,7 +1320,7 @@ for current_server, current_lambda in zip(
 
         ['sauron']#,'sauron']
             ,
-        [0]#,0.4]
+        [0.4]#,0.4]
 ):
     current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}"
     current_description = f"Run to compare with lambda_{current_lambda}_HFpretrain_WBG. Checks the impact of including " \

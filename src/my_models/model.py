@@ -122,7 +122,7 @@ class DIRTLMHead(Model):
     def get_metrics(self, **kwargs):
         return self.metrics_dict.copy()  # copy needed to avoid overlapping train and validation metrics
 
-    def forward(self, input_ids, padding_mask, sentence_order_labels, masked_lm_labels=None, token_type_ids=None):
+    def forward(self, input_ids, padding_mask, sentence_order_labels=None, masked_lm_labels=None, token_type_ids=None):
 
         # ENCODING
         clean = (FLAGS.DIR != 'combo') or (not self.training) or (
@@ -155,32 +155,34 @@ class DIRTLMHead(Model):
         result_dict['encoded_activations'] = encoded
 
         vocab_scores = self.lm_head(encoded)
+        if not ((masked_lm_labels is None) and (sentence_order_labels is None)):
+            E2E_loss = 0
+            if masked_lm_labels is not None:
+                targets = process_targets_for_loss(masked_lm_labels)
+                vocab_scores_contiguous = vocab_scores.contiguous().view(-1, get_my_tokenizer().vocab_size)
+                MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
+                                                 targets)
+                E2E_loss += MLM_loss
 
-        if masked_lm_labels is not None:
-            targets = process_targets_for_loss(masked_lm_labels)
-            vocab_scores_contiguous = vocab_scores.contiguous().view(-1, get_my_tokenizer().vocab_size)
-            MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
-                                             targets)
+                self.metrics_dict['crossentropy_loss'] = MLM_loss.item()
+                self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
 
-            self.metrics_dict['crossentropy_loss'] = MLM_loss.item()
-            self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
+                if FLAGS.DIR:
+                    self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
+                                                                                        torch.Tensor) else cum_layer_loss
+                    for layer, loss in enumerate(layer_loss_list):
+                        self.metrics_dict[f'DIR_loss_layer_{layer}'] = loss.item() if isinstance(loss,
+                                                                                                 torch.Tensor) else loss
 
-            if FLAGS.DIR:
-                self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
-                                                                                    torch.Tensor) else cum_layer_loss
-                for layer, loss in enumerate(layer_loss_list):
-                    self.metrics_dict[f'DIR_loss_layer_{layer}'] = loss.item() if isinstance(loss,
-                                                                                             torch.Tensor) else loss
 
-        SOP_loss = 0
-        if sentence_order_labels is not None and (FLAGS.objective == "albert_mlm_sop"):
-            pooled_output = self.pooler_activation(self.pooler(encoded[:, 0]))
-            SOP_loss = self.sop_head(pooled_output, sentence_order_labels)
-            self.metrics_dict['SOP_loss'] = SOP_loss.item()
-        E2E_loss = MLM_loss + SOP_loss
-        self.metrics_dict['e2e_loss'] = E2E_loss.item()
-        result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
-                    1 - FLAGS.DIR_loss_fraction) * E2E_loss if FLAGS.DIR else E2E_loss
+            if sentence_order_labels is not None and (FLAGS.objective == "albert_mlm_sop"):
+                pooled_output = self.pooler_activation(self.pooler(encoded[:, 0]))
+                SOP_loss = self.sop_head(pooled_output, sentence_order_labels)
+                self.metrics_dict['SOP_loss'] = SOP_loss.item()
+                E2E_loss += SOP_loss
+                self.metrics_dict['e2e_loss'] = E2E_loss.item()
+            result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
+                        1 - FLAGS.DIR_loss_fraction) * E2E_loss if FLAGS.DIR else E2E_loss
         result_dict['vocab_scores'] = vocab_scores
 
         return result_dict  # Dictionary format for AllenNLP trainer loop

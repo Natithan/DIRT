@@ -88,6 +88,15 @@ class MultiRCTask(Task):
                         answer["text"] = tokenize_and_truncate(
                             self.tokenizer_name, answer["text"], self.max_seq_len
                         )
+                        ## Added by Nathan
+                        total_length = len(answer) + len(question) + len(ex["passage"]["text"]) + 3 # Including [CLS], [SEP] and [SEP]
+                        if total_length > self.max_seq_len:
+                            overflow_count = total_length - self.max_seq_len
+                            ex["passage"]["text"] = ex["passage"]["text"][:-overflow_count]
+                        assert len(answer) + len(question) + len(ex["passage"]["text"])  + 3<= self.max_seq_len
+                        ## End of added by Nathan
+
+
                 examples.append(ex)
         return examples
 
@@ -247,6 +256,7 @@ class ReCoRDTask(Task):
                     anss = [a["text"] for a in qa["answers"]]
                 else:
                     anss = []
+
                 ex = {
                     "passage": psg,
                     "ents": ents,
@@ -299,6 +309,13 @@ class ReCoRDTask(Task):
 
         def _make_instance(psg, qst, ans_str, label, psg_idx, qst_idx, ans_idx):
             """ pq_id: passage-question ID """
+            ## Added by Nathan
+            total_length = len(psg) + len(qst) + 3 # Including [CLS], [SEP] and [SEP]
+            if total_length > self.max_seq_len:
+                overflow_count = total_length - self.max_seq_len
+                psg = psg[:-overflow_count]
+            assert len(psg) + len(qst) + 3 <= self.max_seq_len
+            ## End of added by Nathan
             d = {}
             d["psg_str"] = MetadataField(" ".join(psg))
             d["qst_str"] = MetadataField(" ".join(qst))

@@ -9,6 +9,7 @@ BPE_INDEXER_SUFFIX = '</w>'
 # HOSTNAME = subprocess.check_output('hostname').decode().strip()
 # WRITE_ROOT = f'/cw/working-{HOSTNAME}/nathan/phd'
 STORAGE_ROOT = '/cw/liir/NoCsBack/testliir/nathan/phd'
+SHARED_DATASETS_ROOT = '/cw/liir/NoCsBack/testliir/datasets'
 TYPE_VOCAB_SIZE = 2
 
 

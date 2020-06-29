@@ -8,7 +8,7 @@ from absl import app
 log.basicConfig(
     format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
 )
-from constants import STORAGE_ROOT
+from constants import STORAGE_ROOT, SHARED_DATASETS_ROOT
 import sys
 
 from jiant.__main__ import main as jiant_main
@@ -16,9 +16,9 @@ from jiant.__main__ import main as jiant_main
 def main(_):
     process_flags()
     log.info(f'Using GPUs {FLAGS.device_idxs}')
-    os.environ["TORCH_HOME"] = f'/cw/working-arwen/nathan' #Load cache files once on arwen, then always read
+    os.environ["TORCH_HOME"] = STORAGE_ROOT #Load cache files once on arwen, then always read
     os.environ["JIANT_PROJECT_PREFIX"] = f'{STORAGE_ROOT}/output'
-    os.environ["JIANT_DATA_DIR"] = f'{STORAGE_ROOT}/data'
+    os.environ["JIANT_DATA_DIR"] = f'{SHARED_DATASETS_ROOT}/SuperGLUE'
     os.environ["WORD_EMBS_FILE"] = '-1'
     os.environ["GLOBAL_RO_EXP_DIR"] = f'{STORAGE_ROOT}/output/SG'
     assert len(FLAGS.device_idxs) >0, "No GPU available to run"

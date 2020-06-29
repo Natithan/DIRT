@@ -35,6 +35,8 @@ class DIRTLMHead(Model):
         self.embedder = AlbertEmbedder()
         self.shared_encoder_block = EncoderBlock(finetune_stage)
         if FLAGS.DIR in combo_or_ablations:
+            self.learn_phase = True
+        if FLAGS.DIR == 'combo':
             self.combiner = nn.Linear(3 * FLAGS.d_hidden, FLAGS.d_hidden)
             self.shared_top_down_predictor = nn.Sequential(
                 nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
@@ -51,7 +53,6 @@ class DIRTLMHead(Model):
                 get_activation(),
                 nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
             )
-            self.learn_phase = True
         elif FLAGS.DIR == 'only_adjacent':
             self.combiner = nn.Linear(2 * FLAGS.d_hidden, FLAGS.d_hidden)
             self.shared_from_left_predictor = nn.Sequential(
@@ -161,9 +162,9 @@ class DIRTLMHead(Model):
         else:
 
             encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],
-                                   top_down=self.shared_top_down_predictor,
-                                   from_left=self.shared_from_left_predictor,
-                                   from_right=self.shared_from_right_predictor,
+                                   top_down=self.shared_top_down_predictor if not (FLAGS.DIR == 'only_adjacent') else None,
+                                   from_left=self.shared_from_left_predictor if not (FLAGS.DIR == 'only_top_down') else None,
+                                   from_right=self.shared_from_right_predictor if not (FLAGS.DIR == 'only_top_down') else None,
                                    combiner=self.combiner,
                                    clean=clean,
                                    learn_phase=self.learn_phase)
@@ -344,8 +345,9 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
             self.combiner = combiner
             for m in [self.top_down_predictor, self.from_left_predictor, self.from_right_predictor,
                       self.combiner]:
-                for p in m.parameters():
-                    p.requires_grad = learn_phase
+                if m is not None:
+                    for p in m.parameters():
+                        p.requires_grad = learn_phase
 
     def forward(self, *inputs):
         layers = self[:FLAGS.nb_encoder_layers]

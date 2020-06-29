@@ -67,6 +67,7 @@ class MultiRCTask(Task):
         with open(path, encoding="utf-8") as data_fh:
             examples = []
             for example in data_fh:
+
                 ex = json.loads(example)
 
                 assert (
@@ -89,11 +90,12 @@ class MultiRCTask(Task):
                             self.tokenizer_name, answer["text"], self.max_seq_len
                         )
                         ## Added by Nathan
-                        total_length = len(answer) + len(question) + len(ex["passage"]["text"]) + 3 # Including [CLS], [SEP] and [SEP]
+                        total_length = len(answer["text"]) + len(question["question"]) + len(
+                            ex["passage"]["text"]) + 3  # Including [CLS], [SEP] and [SEP]
                         if total_length > self.max_seq_len:
                             overflow_count = total_length - self.max_seq_len
                             ex["passage"]["text"] = ex["passage"]["text"][:-overflow_count]
-                        assert len(answer) + len(question) + len(ex["passage"]["text"])  + 3<= self.max_seq_len
+                        assert len(answer["text"]) + len(question["question"]) + len(ex["passage"]["text"]) + 3 <= self.max_seq_len
                         ## End of added by Nathan
 
 

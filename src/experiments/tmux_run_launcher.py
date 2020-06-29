@@ -1316,22 +1316,21 @@ BASE_SERVER = "arwen"
 #         'description': current_description,
 #         'server': current_server}
 
-for current_server, current_lambda in zip(
-
-        ['sauron']#,'sauron']
-            ,
-        [0.4]#,0.4]
+for current_server, current_lambda, current_ablation in zip(
+        ['sauron','arwen'],
+        [0.4,0.4],
+    ['only_adjacent','only_top_down']
 ):
-    current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}"
-    current_description = f"Run to compare with lambda_{current_lambda}_HFpretrain_WBG. Checks the impact of including " \
-                          f"a proper Albert objective: SOP and proper MLM"
+    current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}_{current_ablation}"
+    current_description = f"Run to compare with HFpre_MLM_SOP_lambda_{current_lambda}. " \
+                          f"Checks the impact of using {' '.join(current_ablation.split('_'))} states"
     RUNS[current_run_name] = {'commands': [
         f"ssh {current_server}",
 
         f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
         f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
         f" --d_batch=8 --max_seq_length=256 "
-        f" --DIR=combo"
+        f" --DIR={current_ablation}"
         f" --objective=albert_mlm_sop"
         f" --replace_self_predictions=''"
         f" --use_HFpretrained_weights"

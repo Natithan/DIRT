@@ -24,7 +24,7 @@ import logging as log
 log.basicConfig(
     format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
 )  # noqa
-
+combo_or_ablations = ['combo','only_top_down','only_adjacent']
 
 class DIRTLMHead(Model):
     def __init__(self, finetune_stage=False):
@@ -34,7 +34,7 @@ class DIRTLMHead(Model):
         super().__init__(Vocabulary())
         self.embedder = AlbertEmbedder()
         self.shared_encoder_block = EncoderBlock(finetune_stage)
-        if FLAGS.DIR == 'combo':
+        if FLAGS.DIR in combo_or_ablations:
             self.combiner = nn.Linear(3 * FLAGS.d_hidden, FLAGS.d_hidden)
             self.shared_top_down_predictor = nn.Sequential(
                 nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
@@ -52,6 +52,26 @@ class DIRTLMHead(Model):
                 nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
             )
             self.learn_phase = True
+        elif FLAGS.DIR == 'only_adjacent':
+            self.combiner = nn.Linear(2 * FLAGS.d_hidden, FLAGS.d_hidden)
+            self.shared_from_left_predictor = nn.Sequential(
+                nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+                get_activation(),
+                nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
+            )
+            self.shared_from_right_predictor = nn.Sequential(
+                nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+                get_activation(),
+                nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
+            )
+        elif FLAGS.DIR == 'only_top_down': #TODO maybe ditch the old top_down flag
+
+            self.combiner = nn.Linear(1 * FLAGS.d_hidden, FLAGS.d_hidden)
+            self.shared_top_down_predictor = nn.Sequential(
+                nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+                get_activation(),
+                nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
+            )
         self.lm_head = LMHead()
         if FLAGS.objective == "albert_mlm_sop":
             self.sop_head = SOPHead()
@@ -125,9 +145,9 @@ class DIRTLMHead(Model):
     def forward(self, input_ids, padding_mask, sentence_order_labels=None, masked_lm_labels=None, token_type_ids=None):
 
         # ENCODING
-        clean = (FLAGS.DIR != 'combo') or (not self.training) or (
+        clean = (FLAGS.DIR not in combo_or_ablations) or (not self.training) or (
                     self.finetune_stage and not FLAGS.replace_self_predictions)
-        if FLAGS.DIR == 'combo':
+        if FLAGS.DIR in combo_or_ablations:
             normalizer = FLAGS.nb_encoder_layers - FLAGS.top_down_distance
 
             if FLAGS.replace_self_predictions == 'alternate':
@@ -332,19 +352,26 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
         cum_layer_loss = 0
         layer_loss_list = []
         for layer_idx, module in enumerate(layers):  # TODO fix heavy mem overhead
-            if FLAGS.DIR == 'combo' and (layer_idx + FLAGS.top_down_distance < len(layers)) and (not self.clean):
+            if FLAGS.DIR in combo_or_ablations and (layer_idx + FLAGS.top_down_distance < len(layers)) and (not self.clean):
                 in_activations, padding_mask = inputs[:2]
                 masked_inputs, DIRT_mask = apply_sequence_mask(in_activations)
-                contextualizer = layers[layer_idx:layer_idx + FLAGS.top_down_distance]  # Clean true by default
-                top_down_inputs, _, _, _ = contextualizer(masked_inputs, padding_mask)
-                left_adjacent_inputs = in_activations.roll(shifts=1, dims=1)
-                right_adjacent_inputs = in_activations.roll(shifts=-1, dims=1)
-                top_down_prediction = self.top_down_predictor(
-                    top_down_inputs)
-                from_left_prediction = self.from_left_predictor(left_adjacent_inputs)
-                from_right_prediction = self.from_right_predictor(right_adjacent_inputs)
+                prediction_sources = []
+                if FLAGS.DIR != 'only_adjacent':
+                    contextualizer = layers[layer_idx:layer_idx + FLAGS.top_down_distance]  # Clean true by default
+                    top_down_inputs, _, _, _ = contextualizer(masked_inputs, padding_mask)
+                    top_down_prediction = self.top_down_predictor(top_down_inputs)
+                    prediction_sources.append(top_down_prediction)
+                if FLAGS.DIR != 'only_top_down':
+                    left_adjacent_inputs = in_activations.roll(shifts=1, dims=1)
+                    right_adjacent_inputs = in_activations.roll(shifts=-1, dims=1)
+                    from_left_prediction = self.from_left_predictor(left_adjacent_inputs)
+                    from_right_prediction = self.from_right_predictor(right_adjacent_inputs)
+                    prediction_sources.append(from_left_prediction)
+                    prediction_sources.append(from_right_prediction)
+
+
                 combined_prediction = self.combiner(
-                    torch.cat((top_down_prediction, from_left_prediction, from_right_prediction),
+                    torch.cat(prediction_sources,
                               dim=-1))
                 # The first and last sequence elements don't have proper left resp. right inputs.
                 # Don't consider these in calculating the loss
@@ -363,7 +390,7 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
                 inputs = module(*inputs)
             else:
                 inputs = module(inputs)
-        if (not self.clean) and FLAGS.DIR == 'combo':
+        if (not self.clean) and FLAGS.DIR in combo_or_ablations:
             inputs = inputs[:2] + (cum_layer_loss,) + (layer_loss_list,)
         return inputs
 

@@ -491,7 +491,7 @@ class CombinedSplitDataset(IterableDataset):
         if os.path.exists(length_blob_path) and not FLAGS.fresh_data:
             length = torch.load(length_blob_path, map_location='cpu')
         else:
-            length = len(self.get_data())
+            length = len(self.get_data()['ids'])
             torch.save(length, length_blob_path)
         return int(length / FLAGS.d_batch)
 

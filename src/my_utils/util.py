@@ -6,6 +6,7 @@ import io
 
 import torch
 from torch import distributed as dist
+from tqdm import tqdm
 
 from config import FLAGS, MODEL_RELEVANT_FLAGS
 from wrappers import PretrainObjectiveModelWrapper, MODEL_MAPPING
@@ -16,7 +17,7 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def setup(rank,world_size):
+def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12356'
 
@@ -27,6 +28,7 @@ def setup(rank,world_size):
     # start from same random weights and biases.
     torch.manual_seed(42)
 
+
 def load_pretrained_model_for_SG():
     log.info(f"Loading pretrained model for SG from {FLAGS.saved_pretrained_model_path}")
     model_path = FLAGS.saved_pretrained_model_path
@@ -34,11 +36,12 @@ def load_pretrained_model_for_SG():
     list[-1] = 'flagfile.txt'
     flagfile_path = "/".join(list)
     model_FLAGS = deepcopy(FLAGS)
-    model_FLAGS(["", f"--flagfile={flagfile_path}"]) # Normally first arg is the name of the file to run, not relevant here
-    run_flag_dict = FLAGS.__dict__['__flags'] #TODO refactor this: use getattribute instead of the __dict__ maybe
+    model_FLAGS(
+        ["", f"--flagfile={flagfile_path}"])  # Normally first arg is the name of the file to run, not relevant here
+    run_flag_dict = FLAGS.__dict__['__flags']  # TODO refactor this: use getattribute instead of the __dict__ maybe
     model_flag_dict = model_FLAGS.__dict__['__flags']
     for f in MODEL_RELEVANT_FLAGS:
-        updated_flags=[]
+        updated_flags = []
         if not (run_flag_dict[f].value == model_flag_dict[f].value):
             run_flag_dict[f].value = model_flag_dict[f].value
             updated_flags.append(f)
@@ -55,6 +58,7 @@ def load_pretrained_model_for_SG():
     unwrapped_model = wrapped_model.model
     return unwrapped_model
 
+
 class TqdmToLogger(io.StringIO):
     """
         Output stream for TQDM which will output to logger module instead of
@@ -63,11 +67,29 @@ class TqdmToLogger(io.StringIO):
     logger = None
     level = None
     buf = ''
-    def __init__(self,logger,level=None):
+
+    def __init__(self, logger, level=None):
         super(TqdmToLogger, self).__init__()
         self.logger = logger
         self.level = level or logging.INFO
-    def write(self,buf):
+
+    def write(self, buf):
         self.buf = buf.strip('\r\n\t ')
+
     def flush(self):
-        self.logger.log(self.level, self.buf)
+        try:
+            self.logger.log(self.level, self.buf)
+        except NameError:
+            pass
+
+
+class TqdmHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            tqdm.write(msg)  # , file=sys.stderr)
+            self.flush()
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except:
+            self.handleError(record)

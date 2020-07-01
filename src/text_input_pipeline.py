@@ -1,4 +1,4 @@
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 import numpy as np
 import pickle
@@ -18,6 +18,7 @@ import logging as log
 import pandas as pd
 import random
 import nltk
+
 OBJECTIVE_TO_DATA_FORMAT = OrderedDict(
     [
         ("t5_mlm", "single_segment_sequences",),
@@ -25,7 +26,7 @@ OBJECTIVE_TO_DATA_FORMAT = OrderedDict(
         ("albert_mlm_sop", "pairwise_segment_sequences",),
     ]
 )
-BLOB_SUBFOLDER= Path(FLAGS.blob_folder, OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective])
+BLOB_SUBFOLDER = Path(FLAGS.blob_folder, OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective],str(FLAGS.pretrain_data_fraction))
 
 nltk.download('punkt', download_dir=STORAGE_ROOT)
 nltk.data.path.append(STORAGE_ROOT)
@@ -56,7 +57,7 @@ class SingleDataset():
         self.token_indexer = get_my_tokenizer()
 
     def get_data(self):
-        actual_split = self.split_name.split("_")[1]
+        actual_split = self.split_name.split("_")[0]
         assert actual_split in ['train', 'test', 'val']
 
         split_names = [self.split_name.replace(actual_split, s) for s in ['train', 'test', 'val']]
@@ -74,42 +75,34 @@ class SingleDataset():
 
     def _read_data(self, split_names, split_paths):
         log.info(f"Creating and storing splits for {self.corpus}")
-        full_tensor, sentence_order_list = self.get_full_tensor()
-        train, val, test = full_tensor[:int(.9 * len(full_tensor))], \
-                           full_tensor[int(.9 * len(full_tensor)):int(.95 * len(full_tensor))], \
-                           full_tensor[int(.95 * len(full_tensor)):]
-        train_order_labels, val_order_labels, test_order_labels = sentence_order_list[:int(.9 * len(full_tensor))], \
-                                                                  sentence_order_list[int(.9 * len(full_tensor)):int(
-                                                                      .95 * len(full_tensor))], \
-                                                                  sentence_order_list[int(.95 * len(full_tensor)):]
+        full_tensor_dict = self.get_full_tensor_dict()
+        train, val, test = {k: v[:int(.9 * len(v))] for k, v in full_tensor_dict.items()}, \
+                           {k: v[int(.9 * len(v)):int(.95 * len(v))] for k, v in full_tensor_dict.items()}, \
+                           {k: v[int(.95 * len(v)):] for k, v in full_tensor_dict.items()}
 
-        path_to_split = dict(zip(split_paths, [{'ids': train, 'order_label': train_order_labels},
-                                               {'ids': test, 'order_label': test_order_labels},
-                                               {'ids': val, 'order_label': val_order_labels}]))
-        name_to_split = dict(zip(split_names, [{'ids': train, 'order_label': train_order_labels},
-                                               {'ids': test, 'order_label': test_order_labels},
-                                               {'ids': val, 'order_label': val_order_labels}]))
+        path_to_split = dict(zip(split_paths, [train, test, val]))
+        name_to_split = dict(zip(split_names, [train, test, val]))
         for path, split in path_to_split.items():
             torch.save(split, path)
         split_tensor = name_to_split[self.split_name]
 
         return split_tensor
 
-    def get_full_tensor(self):
+    def get_full_tensor_dict(self):
         log.info(f"Loading a fraction {FLAGS.pretrain_data_fraction} of {self.corpus} text data from {self.text_path}.")
-        tensor_list = []
-        sentence_order_list = []
+        data_dict = defaultdict(list)
         all_text_files = glob.glob(corpus_to_data[self.corpus])
         for i, path in tqdm(enumerate(all_text_files)):
             if self.corpus in ['wiki', 'gutenberg']:
                 if i > len(all_text_files) * FLAGS.pretrain_data_fraction:
                     break
-            ids_and_order_labels = self.text_to_tensor_rows(path)
-            tensor_list += ids_and_order_labels['ids']
-            sentence_order_list += ids_and_order_labels['order_label']
-        full_tensor = torch.cat(tensor_list)
+            new_data = self.text_to_dict_of_tensor_rows(path)
+            for k, v in new_data.items():
+                data_dict[k] += v
+        for k, v in data_dict.items():
+            data_dict[k] = torch.cat(v, dim=0)
 
-        return full_tensor, sentence_order_list
+        return data_dict
 
     # def text_to_tensor_rows(self, path):
     #     # A 'document' is a chunk of text that belongs to each other (e.g. one wikipedia page, one bookcorpus paragraph
@@ -198,7 +191,7 @@ class SingleDataset():
     #     return [torch.cat(tensor_list).to(torch.int32)], sentence_order_list
 
     # Adapted from https://github.com/google-research/albert/blob/7d8e66b191838ed8f4caf414e92a25e7f363d460/create_pretraining_data.py#L602
-    def text_to_tensor_rows(self, path):
+    def text_to_dict_of_tensor_rows(self, path):
         """Creates tensor rows and order labels for the text in the given path."""
         do_SOP = (FLAGS.objective == 'albert_mlm_sop')
         all_documents = []
@@ -349,33 +342,6 @@ class SingleDataset():
                             current_sequence = self.token_indexer.prepare_for_model(tokens_a, tokens_b,
                                                                                     truncation_strategy='do_not_truncate',
                                                                                     pad_to_max_length=True)['input_ids']
-                            # tokens = []
-                            # segment_ids = []
-                            # tokens.append("[CLS]")
-                            # segment_ids.append(0)
-                            # for token in tokens_a:
-                            #     tokens.append(token)
-                            #     segment_ids.append(0)
-                            #
-                            # tokens.append("[SEP]")
-                            # segment_ids.append(0)
-                            #
-                            # for token in tokens_b:
-                            #     tokens.append(token)
-                            #     segment_ids.append(1)
-                            # tokens.append("[SEP]")
-                            # segment_ids.append(1)
-                            #
-                            # (tokens, masked_lm_positions,
-                            #  masked_lm_labels, token_boundary) = create_masked_lm_predictions(
-                            #     tokens, masked_lm_prob, max_predictions_per_seq, vocab_words, rng)
-                            # instance = TrainingInstance(
-                            #     tokens=tokens,
-                            #     segment_ids=segment_ids,
-                            #     is_random_next=not_in_order,
-                            #     token_boundary=token_boundary,
-                            #     masked_lm_positions=masked_lm_positions,
-                            #     masked_lm_labels=masked_lm_labels)
                             tensor_list.append(torch.tensor(current_sequence).unsqueeze(
                                 0))
                             sentence_order_list.append(int(not_in_order))
@@ -395,8 +361,11 @@ class SingleDataset():
                                                                             pad_to_max_length=True)['input_ids']
                     tensor_list.append(torch.tensor(current_sequence).unsqueeze(
                         0))
-        return {"ids": [torch.cat(tensor_list).to(torch.int32)],
-                "order_label": sentence_order_list}
+        result_dict = {}
+        result_dict["input_ids"] = [torch.cat(tensor_list).to(torch.int32)]
+        if FLAGS.objective == 'albert_mlm_sop':
+            result_dict["sentence_order_labels"] = [torch.tensor(sentence_order_list).to(torch.bool)]
+        return result_dict
 
     def split_into_sentences(self, text):
         """
@@ -470,31 +439,22 @@ class CombinedSplitDataset(IterableDataset):
 
         while self.chunk_paths or self.current_chunk_path:
             assert len(self.pop_indices) == len(
-                self.chunk_paths)  # Needs to be torch.long for downstream, but storing as int32 because uses less space
+                self.chunk_paths)
             should_get_new_chunk = ((self.current_chunk_path is None) or (self.current_permuted_indices is None))
             if should_get_new_chunk:
                 pop_idx = self.pop_indices.pop(0)
                 self.current_chunk_path = self.chunk_paths.pop(pop_idx)
             chunk_data = torch.load(self.current_chunk_path.as_posix())
-            if BLOB_SUBFOLDER.name == "pairwise_segment_sequences":
-                chunk_ids, chunk_order_label = chunk_data['ids'].to(torch.int64), chunk_data['order_label']
-            else:
-                chunk_ids = chunk_data
+            data_len = len(chunk_data[list(chunk_data.keys())[0]])
             if should_get_new_chunk:
-                self.current_permuted_indices = torch.randperm(len(chunk_ids))
+                self.current_permuted_indices = torch.randperm(data_len) # Length of all fields should be the same
 
-            chunk_ids = chunk_ids[self.current_permuted_indices]
-            if BLOB_SUBFOLDER.name == "pairwise_segment_sequences":
-                chunk_order_label = torch.tensor(chunk_order_label)
-                chunk_order_label = chunk_order_label[self.current_permuted_indices]
+            for key,tensor in chunk_data.items():
+                chunk_data[key] = tensor[self.current_permuted_indices]
             if not self.row_index:
                 self.row_index = 0
-            while self.row_index < len(chunk_ids):
-                if BLOB_SUBFOLDER.name == "pairwise_segment_sequences":
-                    yield {'input_ids': chunk_ids[self.row_index],
-                           'sentence_order_labels': chunk_order_label[self.row_index]}
-                else:
-                    yield {'input_ids': chunk_ids[self.row_index]}
+            while self.row_index < data_len:
+                yield {k:v[self.row_index] for k,v in chunk_data.items()}
 
                 self.row_index += 1
             self.current_permuted_indices = None
@@ -506,7 +466,8 @@ class CombinedSplitDataset(IterableDataset):
         if os.path.exists(length_blob_path) and not FLAGS.fresh_data:
             length = torch.load(length_blob_path, map_location='cpu')
         else:
-            length = len(self.get_data()['ids'])
+            data = self.get_data()
+            length = len(data[list(data.keys())[0]])
             torch.save(length, length_blob_path)
         return int(length / FLAGS.d_batch)
 
@@ -526,12 +487,9 @@ class CombinedSplitDataset(IterableDataset):
         corpus_names = ['wiki', 'gutenberg', 'bookcorpus']
         single_datasets_data = [SingleDataset(corpus_name=corpus_name, split_name=self.split_name).get_data()
                                 for corpus_name in corpus_names]
-        unflattened = {k: [dic[k] for dic in single_datasets_data] for k in single_datasets_data[0]}
-        flattened = {
-            'ids': torch.cat(unflattened['ids']),
-            'order_label': [l for corpus_labels in unflattened['order_label'] for l in corpus_labels]
-        }
-        return flattened
+        unflattened = {k: torch.cat([dic[k] for dic in single_datasets_data],dim=0) for k in single_datasets_data[0]}
+
+        return unflattened
 
 
 def get_data_dict():
@@ -542,7 +500,7 @@ def get_data_dict():
         os.makedirs(BLOB_SUBFOLDER)
 
     train_dataset, test_dataset, val_dataset = [
-        CombinedSplitDataset(f'{FLAGS.pretrain_data_fraction}_{split}_{FLAGS.max_seq_length}')
+        CombinedSplitDataset(f'{split}_{FLAGS.max_seq_length}')
         for split in ['train', 'test', 'val']]
     return {"train": train_dataset,
             "test": test_dataset,
@@ -639,19 +597,17 @@ def get_data_dict_old():
 
 
 def split_into_chunks(split_name, split_dict):
-    split_tensor = split_dict['ids']
-    split_order_labels = split_dict['order_label']
+    split_input_ids = split_dict['input_ids']
     chunk_size_MiB = 500  # Size of chunks to load into memory at once, in MiB
-    B_per_el = split_tensor.element_size()
-    nb_cols = split_tensor.shape[-1]
+    B_per_el = split_input_ids.element_size()
+    nb_cols = split_input_ids.shape[-1]
     B_per_MiB = 2 ** 20
     els_per_chunk = ((chunk_size_MiB * B_per_MiB) / B_per_el)
     rows_per_chunk = int(els_per_chunk / nb_cols)
     split_dir = Path(BLOB_SUBFOLDER, split_name)
     Path.mkdir(split_dir)
-    for i in range(0, len(split_tensor), rows_per_chunk):
-        ids_chunk = split_tensor[i:i + rows_per_chunk].clone()
-        order_labels_chunk = split_order_labels[i:i + rows_per_chunk].copy()
+    for i in range(0, len(split_input_ids), rows_per_chunk):
         path = Path(split_dir, f'{i}.pt').as_posix()
-        torch.save({'ids': ids_chunk, 'order_label': order_labels_chunk}, path)
-        del ids_chunk, order_labels_chunk
+        chunk_dict = {k:v[i:i + rows_per_chunk].clone() for k,v in split_dict.items()}
+        torch.save(chunk_dict, path)
+        del chunk_dict

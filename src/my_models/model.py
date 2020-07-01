@@ -254,7 +254,7 @@ class SOPHead(nn.Module):
         # "switched order".
 
         logits = self.dense(input_tensor)
-        loss = nn.CrossEntropyLoss()(logits, sentence_order_labels)
+        loss = nn.CrossEntropyLoss()(logits, sentence_order_labels.to(torch.long))
         # log_probs = nn.LogSoftmax(logits, dim=-1)
         # labels = tf.reshape(sentence_order_labels, [-1])
         # one_hot_labels = tf.one_hot(labels, depth=2, dtype=tf.float32)

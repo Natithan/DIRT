@@ -39,6 +39,7 @@ class PretrainObjectiveModelWrapper(Model):
 
     def forward(self, input_ids,sentence_order_labels,
                 token_type_ids=None):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
+        input_ids = input_ids.to(torch.long)
         new_input_dict = {}
         new_input_dict['padding_mask'] = input_ids != self.token_indexer.pad_token_id
         if (not self.finetune_stage):

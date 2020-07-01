@@ -91,8 +91,6 @@ class DIRTLMHead(Model):
                 for p in m.parameters():
                     p.requires_grad = False
 
-
-
     def load_HFpretrained_weights(self):
         hf_state_dict = AlbertForMaskedLM.from_pretrained(FLAGS.hf_model_handle).state_dict()
         repl = {"albert.embeddings": 'embedder',

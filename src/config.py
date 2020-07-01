@@ -25,7 +25,9 @@ MODEL_RELEVANT_FLAGS = ["model",
                         "nb_encoder_layers",
                         "nb_feedforward_layers",
                         "relative_attention_num_buckets",
-                        "hf_model_handle"]
+                        "hf_model_handle",
+                        "objective" # To match objective-specific heads
+                        ]
 FLAGS = flags.FLAGS
 flags.DEFINE_integer("d_batch", 2, "Batch size. If DIR is not none, this is also the number of negative samples + 1")
 flags.DEFINE_float("DIR_loss_fraction", 0.95,
@@ -63,6 +65,9 @@ flags.DEFINE_integer("SG_max_data_size", -1, "If negative, the full data is used
 flags.DEFINE_integer("manual_seed", None,
                      "Running multiple experiments with the same manual seed should give identical performance"
                      " (barring some unavoidable noise, see https://pytorch.org/docs/stable/notes/randomness.html")
+
+flags.DEFINE_integer("log_interval", 300,
+                     "Period in seconds for tqdm progress bar to update, both in terminal as in log file.")
 # Trainer flags
 flags.DEFINE_integer("patience", 10, "Number of epochs the validation metric can worsen before stopping training.")
 flags.DEFINE_integer("num_epochs", 5,

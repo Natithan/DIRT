@@ -1,6 +1,8 @@
+import logging
 import os
 from collections import OrderedDict
 from copy import deepcopy
+import io
 
 import torch
 from torch import distributed as dist
@@ -52,3 +54,20 @@ def load_pretrained_model_for_SG():
     wrapped_model.load_state_dict(updated_state_dict)
     unwrapped_model = wrapped_model.model
     return unwrapped_model
+
+class TqdmToLogger(io.StringIO):
+    """
+        Output stream for TQDM which will output to logger module instead of
+        the StdOut.
+    """
+    logger = None
+    level = None
+    buf = ''
+    def __init__(self,logger,level=None):
+        super(TqdmToLogger, self).__init__()
+        self.logger = logger
+        self.level = level or logging.INFO
+    def write(self,buf):
+        self.buf = buf.strip('\r\n\t ')
+    def flush(self):
+        self.logger.log(self.level, self.buf)

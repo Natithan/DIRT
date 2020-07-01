@@ -1317,9 +1317,18 @@ BASE_SERVER = "arwen"
 #         'server': current_server}
 
 for current_server, current_lambda, current_ablation in zip(
-        ['sauron','arwen'],
-        [0.4,0.4],
-    ['only_adjacent','only_top_down']
+        [
+            # 'sauron',
+            'arwen'
+        ],
+        [
+            # 0.4,
+            0.4
+        ],
+    [
+        # 'only_adjacent',
+        'only_top_down'
+    ]
 ):
     current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}_{current_ablation}"
     current_description = f"Run to compare with HFpre_MLM_SOP_lambda_{current_lambda}. " \

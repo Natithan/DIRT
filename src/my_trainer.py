@@ -9,6 +9,8 @@ from allennlp.nn import util as nn_util
 from config import FLAGS
 import logging as log
 
+from my_utils.util import TqdmToLogger
+
 logger = log.getLogger()
 
 
@@ -80,8 +82,11 @@ class MyTrainer(GradientDescentTrainer):
         # Having multiple tqdm bars in case of distributed training will be a mess. Hence only the master's
         # progress is shown
         if self._master:
+            # Nathan added
+            tqdm_out = TqdmToLogger(logger, level=logging.INFO)
             batch_group_generator_tqdm = Tqdm.tqdm(
-                batch_group_generator, total=num_training_batches, initial=starting_batch
+                batch_group_generator, total=num_training_batches, initial=starting_batch, file=tqdm_out,
+                mininterval=FLAGS.log_interval
             )
         else:
             batch_group_generator_tqdm = batch_group_generator
@@ -97,6 +102,7 @@ class MyTrainer(GradientDescentTrainer):
 
         cumulative_batch_group_size = 0
         done_early = False
+
         for batch_group in batch_group_generator_tqdm:
             if self._distributed:
                 # Check whether the other workers have stopped already (due to differing amounts of
@@ -469,7 +475,7 @@ class MyTrainer(GradientDescentTrainer):
             self._metric_tracker.clear()
         self.data_loader = training_state['data_loader']
         # To deal with restarts from intra-epoch stops
-        if self.data_loader.dataset.chunk_paths or self.data_loader.dataset.current_chunk_path: # This indicates that we didn't finish with all chunks in the epoch that the training state was in
+        if self.data_loader.dataset.chunk_paths or self.data_loader.dataset.current_chunk_path:  # This indicates that we didn't finish with all chunks in the epoch that the training state was in
             epochs_to_add = 0
         else:
             epochs_to_add = 1
@@ -479,13 +485,11 @@ class MyTrainer(GradientDescentTrainer):
         else:
             epoch_to_return = int(training_state["epoch"].split(".")[0]) + epochs_to_add
 
-
         # For older checkpoints with batch_num_total missing, default to old behavior where
         # it is unchanged.
         batch_num_total = training_state.get("batch_num_total")
         if batch_num_total is not None:
             self._batch_num_total = batch_num_total
-
 
         return epoch_to_return
 

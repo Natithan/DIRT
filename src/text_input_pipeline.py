@@ -1,10 +1,12 @@
+from collections import OrderedDict
+
 import numpy as np
 import pickle
 import time
 import torch
 from allennlp.data import Vocabulary
 import glob
-from pathlib2 import Path
+from pathlib import Path
 from torch.utils.data import Dataset
 from torch.utils.data.dataset import IterableDataset
 
@@ -16,6 +18,14 @@ import logging as log
 import pandas as pd
 import random
 import nltk
+OBJECTIVE_TO_DATA_FORMAT = OrderedDict(
+    [
+        ("t5_mlm", "single_segment_sequences",),
+        ("simple_mlm", "single_segment_sequences",),
+        ("albert_mlm_sop", "pairwise_segment_sequences",),
+    ]
+)
+BLOB_SUBFOLDER= Path(FLAGS.blob_folder, OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective])
 
 nltk.download('punkt', download_dir=STORAGE_ROOT)
 nltk.data.path.append(STORAGE_ROOT)
@@ -39,7 +49,7 @@ def add_custom_tokens(vocab):
 class SingleDataset():
 
     def __init__(self, corpus_name, split_name):
-        self.id_tensor_path = Path(FLAGS.blob_folder, f'{corpus_name}_{split_name}_ids_tensor').as_posix()
+        self.id_tensor_path = Path(BLOB_SUBFOLDER, f'{corpus_name}_{split_name}_ids_tensor').as_posix()
         self.text_path = corpus_to_data[corpus_name]
         self.split_name = split_name
         self.corpus = corpus_name
@@ -50,7 +60,7 @@ class SingleDataset():
         assert actual_split in ['train', 'test', 'val']
 
         split_names = [self.split_name.replace(actual_split, s) for s in ['train', 'test', 'val']]
-        split_paths = [Path(FLAGS.blob_folder, f'{self.corpus}_{sn}_ids_tensor').as_posix()
+        split_paths = [Path(BLOB_SUBFOLDER, f'{self.corpus}_{sn}_ids_tensor').as_posix()
                        for sn in split_names]
         assert self.id_tensor_path in split_paths, f"{self.id_tensor_path} is not path of {split_paths}, check spelling"
         if all([os.path.exists(p) for p in split_paths]) and not FLAGS.fresh_data:
@@ -432,7 +442,7 @@ class CombinedSplitDataset(IterableDataset):
         super().__init__()
         self.token_indexer = get_my_tokenizer()
         self.split_name = split
-        self.split_chunks_folder = Path(FLAGS.blob_folder, f'{split}')
+        self.split_chunks_folder = Path(BLOB_SUBFOLDER, f'{split}')
         self.chunk_paths = None
         self.pop_indices = None
         self.row_index = None
@@ -461,33 +471,38 @@ class CombinedSplitDataset(IterableDataset):
         while self.chunk_paths or self.current_chunk_path:
             assert len(self.pop_indices) == len(
                 self.chunk_paths)  # Needs to be torch.long for downstream, but storing as int32 because uses less space
-            if (self.current_chunk_path is None) or (self.current_permuted_indices is None):
+            should_get_new_chunk = ((self.current_chunk_path is None) or (self.current_permuted_indices is None))
+            if should_get_new_chunk:
                 pop_idx = self.pop_indices.pop(0)
                 self.current_chunk_path = self.chunk_paths.pop(pop_idx)
-                chunk_data = torch.load(self.current_chunk_path.as_posix())
+            chunk_data = torch.load(self.current_chunk_path.as_posix())
+            if BLOB_SUBFOLDER.name == "pairwise_segment_sequences":
                 chunk_ids, chunk_order_label = chunk_data['ids'].to(torch.int64), chunk_data['order_label']
-
-                self.current_permuted_indices = torch.randperm(len(chunk_ids))
             else:
-                chunk_data = torch.load(self.current_chunk_path.as_posix())
-                chunk_ids, chunk_order_label = chunk_data['ids'].to(torch.int64), chunk_data['order_label']
+                chunk_ids = chunk_data
+            if should_get_new_chunk:
+                self.current_permuted_indices = torch.randperm(len(chunk_ids))
 
-                # chunk_data = torch.load(self.current_chunk_path.as_posix()).to(torch.int64)
             chunk_ids = chunk_ids[self.current_permuted_indices]
-            chunk_order_label = torch.tensor(chunk_order_label)
-            chunk_order_label = chunk_order_label[self.current_permuted_indices]
+            if BLOB_SUBFOLDER.name == "pairwise_segment_sequences":
+                chunk_order_label = torch.tensor(chunk_order_label)
+                chunk_order_label = chunk_order_label[self.current_permuted_indices]
             if not self.row_index:
                 self.row_index = 0
             while self.row_index < len(chunk_ids):
-                yield {'input_ids': chunk_ids[self.row_index],
-                       'sentence_order_labels': chunk_order_label[self.row_index]}
+                if BLOB_SUBFOLDER.name == "pairwise_segment_sequences":
+                    yield {'input_ids': chunk_ids[self.row_index],
+                           'sentence_order_labels': chunk_order_label[self.row_index]}
+                else:
+                    yield {'input_ids': chunk_ids[self.row_index]}
+
                 self.row_index += 1
             self.current_permuted_indices = None
             self.current_chunk_path = None
             self.row_index = None
 
     def __len__(self):
-        length_blob_path = Path(FLAGS.blob_folder, f'{self.split_name}_tensor_combined_length').as_posix()
+        length_blob_path = Path(BLOB_SUBFOLDER, f'{self.split_name}_tensor_combined_length').as_posix()
         if os.path.exists(length_blob_path) and not FLAGS.fresh_data:
             length = torch.load(length_blob_path, map_location='cpu')
         else:
@@ -496,7 +511,7 @@ class CombinedSplitDataset(IterableDataset):
         return int(length / FLAGS.d_batch)
 
     def get_data(self):
-        blob_path = Path(FLAGS.blob_folder, f'{self.split_name}_tensor_combined').as_posix()
+        blob_path = Path(BLOB_SUBFOLDER, f'{self.split_name}_tensor_combined').as_posix()
         if os.path.exists(blob_path) and not FLAGS.fresh_data:
             log.info(f'Loading {blob_path} ...')
             start = time.time()
@@ -523,9 +538,8 @@ def get_data_dict():
     '''
     Returns a dictionary containing train, test and validation instance lists, as well as the vocab created from train and validation data
     '''
-    blob_dir_path = Path(STORAGE_ROOT, 'blobs')
-    if not os.path.exists(blob_dir_path):
-        os.mkdir(blob_dir_path)
+    if not os.path.exists(BLOB_SUBFOLDER):
+        os.makedirs(BLOB_SUBFOLDER)
 
     train_dataset, test_dataset, val_dataset = [
         CombinedSplitDataset(f'{FLAGS.pretrain_data_fraction}_{split}_{FLAGS.max_seq_length}')
@@ -599,12 +613,11 @@ def get_data_dict_old():
     Returns a dictionary containing train, test and validation instance lists, as well as the vocab created from train and validation data
     '''
     log.info("Loading old Gutenberg-only data.")
-    blob_dir_path = Path(STORAGE_ROOT, 'blobs')
-    if not os.path.exists(blob_dir_path):
-        os.mkdir(blob_dir_path)
+    if not os.path.exists(BLOB_SUBFOLDER):
+        os.makedirs(BLOB_SUBFOLDER)
     train_dataset, test_dataset, val_dataset = [
         GutenbergSplitDataset(Path(FLAGS.pretrain_data_folder, 'Gutenberg', split).as_posix(),
-                              Path(blob_dir_path, f'{split}_tensor_{FLAGS.max_seq_length}').as_posix())
+                              Path(BLOB_SUBFOLDER, f'{split}_tensor_{FLAGS.max_seq_length}').as_posix())
         for split in ['train', 'test', 'val']]
 
     # To reduce validation time
@@ -634,7 +647,7 @@ def split_into_chunks(split_name, split_dict):
     B_per_MiB = 2 ** 20
     els_per_chunk = ((chunk_size_MiB * B_per_MiB) / B_per_el)
     rows_per_chunk = int(els_per_chunk / nb_cols)
-    split_dir = Path(FLAGS.blob_folder, split_name)
+    split_dir = Path(BLOB_SUBFOLDER, split_name)
     Path.mkdir(split_dir)
     for i in range(0, len(split_tensor), rows_per_chunk):
         ids_chunk = split_tensor[i:i + rows_per_chunk].clone()

@@ -1316,30 +1316,58 @@ BASE_SERVER = "arwen"
 #         'description': current_description,
 #         'server': current_server}
 
-for current_server, current_lambda, current_ablation in zip(
-        [
-            # 'sauron',
-            'arwen'
-        ],
-        [
-            # 0.4,
-            0.4
-        ],
-    [
-        # 'only_adjacent',
-        'only_top_down'
-    ]
+# for current_server, current_lambda, current_ablation in zip(
+#         [
+#             # 'sauron',
+#             'arwen'
+#         ],
+#         [
+#             # 0.4,
+#             0.4
+#         ],
+#     [
+#         # 'only_adjacent',
+#         'only_top_down'
+#     ]
+# ):
+#     current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}_{current_ablation}"
+#     current_description = f"Run to compare with HFpre_MLM_SOP_lambda_{current_lambda}. " \
+#                           f"Checks the impact of using {' '.join(current_ablation.split('_'))} states"
+#     RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+#         f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+#         f" --d_batch=8 --max_seq_length=256 "
+#         f" --DIR={current_ablation}"
+#         f" --objective=albert_mlm_sop"
+#         f" --replace_self_predictions=''"
+#         f" --use_HFpretrained_weights"
+#         f" --DIR_loss_fraction={current_lambda}",
+#
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#         f' --overrides "run_name={current_run_name}"; cd ..'
+#     ],
+#         'description': current_description,
+#         'server': current_server}
+
+for current_server, current_lambda in zip(
+
+        ['sauron','sauron']
+            ,
+        [0.9,1]
 ):
-    current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}_{current_ablation}"
-    current_description = f"Run to compare with HFpre_MLM_SOP_lambda_{current_lambda}. " \
-                          f"Checks the impact of using {' '.join(current_ablation.split('_'))} states"
+    current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}_r2"
+    current_description = f"Run to compare with lambda_{current_lambda}_HFpretrain_WBG. Checks the impact of including " \
+                          f"a proper Albert objective: SOP and proper MLM, for pairwise segmented input"
     RUNS[current_run_name] = {'commands': [
         f"ssh {current_server}",
 
         f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
         f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
         f" --d_batch=8 --max_seq_length=256 "
-        f" --DIR={current_ablation}"
+        f" --DIR=combo"
         f" --objective=albert_mlm_sop"
         f" --replace_self_predictions=''"
         f" --use_HFpretrained_weights"
@@ -1351,8 +1379,6 @@ for current_server, current_lambda, current_ablation in zip(
     ],
         'description': current_description,
         'server': current_server}
-
-
 
 
 def track_run_in_sheets(run_name, commands, description, server):

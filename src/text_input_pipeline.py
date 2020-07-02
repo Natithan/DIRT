@@ -26,7 +26,7 @@ OBJECTIVE_TO_DATA_FORMAT = OrderedDict(
         ("albert_mlm_sop", "pairwise_segment_sequences",),
     ]
 )
-BLOB_SUBFOLDER = Path(FLAGS.blob_folder, OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective],str(FLAGS.pretrain_data_fraction))
+BLOB_SUBFOLDER = Path(FLAGS.blob_folder, OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective], str(FLAGS.pretrain_data_fraction))
 
 nltk.download('punkt', download_dir=STORAGE_ROOT)
 nltk.data.path.append(STORAGE_ROOT)
@@ -447,14 +447,14 @@ class CombinedSplitDataset(IterableDataset):
             chunk_data = torch.load(self.current_chunk_path.as_posix())
             data_len = len(chunk_data[list(chunk_data.keys())[0]])
             if should_get_new_chunk:
-                self.current_permuted_indices = torch.randperm(data_len) # Length of all fields should be the same
+                self.current_permuted_indices = torch.randperm(data_len)  # Length of all fields should be the same
 
-            for key,tensor in chunk_data.items():
+            for key, tensor in chunk_data.items():
                 chunk_data[key] = tensor[self.current_permuted_indices]
             if not self.row_index:
                 self.row_index = 0
             while self.row_index < data_len:
-                yield {k:v[self.row_index] for k,v in chunk_data.items()}
+                yield {k: v[self.row_index] for k, v in chunk_data.items()}
 
                 self.row_index += 1
             self.current_permuted_indices = None
@@ -487,7 +487,7 @@ class CombinedSplitDataset(IterableDataset):
         corpus_names = ['wiki', 'gutenberg', 'bookcorpus']
         single_datasets_data = [SingleDataset(corpus_name=corpus_name, split_name=self.split_name).get_data()
                                 for corpus_name in corpus_names]
-        unflattened = {k: torch.cat([dic[k] for dic in single_datasets_data],dim=0) for k in single_datasets_data[0]}
+        unflattened = {k: torch.cat([dic[k] for dic in single_datasets_data], dim=0) for k in single_datasets_data[0]}
 
         return unflattened
 
@@ -608,6 +608,6 @@ def split_into_chunks(split_name, split_dict):
     Path.mkdir(split_dir)
     for i in range(0, len(split_input_ids), rows_per_chunk):
         path = Path(split_dir, f'{i}.pt').as_posix()
-        chunk_dict = {k:v[i:i + rows_per_chunk].clone() for k,v in split_dict.items()}
+        chunk_dict = {k: v[i:i + rows_per_chunk].clone() for k, v in split_dict.items()}
         torch.save(chunk_dict, path)
         del chunk_dict

@@ -37,7 +37,7 @@ class PretrainObjectiveModelWrapper(Model):
             if not any([s in m for s in self_prediction_parameters]):
                 raise ValueError(f'Unexpected mismatch in loading state dict: {m} not present in pretrained.')
 
-    def forward(self, input_ids,sentence_order_labels,
+    def forward(self, input_ids,sentence_order_labels=None, #TODO make sentence_order_labels_arg optional
                 token_type_ids=None):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens
         input_ids = input_ids.to(torch.long)
         new_input_dict = {}

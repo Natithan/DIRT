@@ -1419,7 +1419,7 @@ for current_server, current_lambda in zip(
         f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
         f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
         f" --d_batch=8 --max_seq_length=256 "
-        f" --DIR=combo'"
+        f" --DIR=combo"
         f" --objective=albert_mlm_sop"
         f" --replace_self_predictions=''"
         f" --use_HFpretrained_weights"
@@ -1437,14 +1437,14 @@ for current_server, current_lambda in zip(
         ['frodo', 'arwen'],
         [0.9, 1]
 ):
-    current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}_run1_CORRECT"
+    current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}_run1"
     current_description = f"A first run at lambda {current_lambda} with the upgraded baseline."
     RUNS[current_run_name] = {'commands': [
         f"ssh {current_server}",
 
         f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
         f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
-        f" --d_batch=24 --max_seq_length=256 "
+        f" --d_batch=8 --max_seq_length=256 "
         f" --DIR=combo"
         f" --objective=albert_mlm_sop"
         f" --replace_self_predictions=''"

@@ -1646,10 +1646,31 @@ def track_run_in_sheets(run_name, commands, description, server):
 #     'server': current_server}
 
 current_server = 'frodo'
-current_run_name = f"probe_HFpre"
+current_run_name = f"probe_HFpre_nomypre"
 current_description = f"Run that trains uniform contrastive critic on a pretrained ALBERT model. The level to which the" \
                       f"critic then converges is then an indicator to how well the internal states of the model lend" \
                       f"themselves to sequence disambiguation, AKA how 'slow' they are "
+RUNS[current_run_name] = {'commands': [
+    f"ssh {current_server}",
+
+    f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+    f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+    f" --d_batch=8 --max_seq_length=256 "
+    f" --replace_self_predictions=''"
+    f" --objective="
+    f" --freeze_main_model"
+    f" --use_HFpretrained_weights"
+    f" --DIR=uniform"
+    f" --DIR_loss_fraction=1"
+],
+    'description': current_description,
+    'server': current_server}
+
+current_server = 'arwen'
+current_run_name = f"probe_noHFpre_nomypre"
+current_description = f"Run that trains uniform contrastive critic on a randomly initialized ALBERT model." \
+                      f"Expectation = it should be really hard to learn. The only regularity is the co-occurence of words:" \
+                      f" words have random internal states, but the states are the same (at the embedding stage) if it's the same word "
 RUNS[current_run_name] = {'commands': [
     f"ssh {current_server}",
 

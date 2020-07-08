@@ -1626,21 +1626,41 @@ def track_run_in_sheets(run_name, commands, description, server):
 #     ],
 #         'description': current_description,
 #         'server': current_server}
+# current_server = 'frodo'
+# current_run_name = f"noHFpre_MLM_SOP"
+# current_description = f"Run to create 'Intermediate-level' model for slowness probing"
+# RUNS[current_run_name] = {'commands': [
+#     f"ssh {current_server}",
+#
+#     f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+#     f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+#     f" --d_batch=26 --max_seq_length=256 "
+#     f" --objective=albert_mlm_sop"
+#     f" --replace_self_predictions=''",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#     f' --overrides "run_name={current_run_name}"; cd ..'
+# ],
+#     'description': current_description,
+#     'server': current_server}
+
 current_server = 'frodo'
-current_run_name = f"noHFpre_MLM_SOP"
-current_description = f"Run to create 'Intermediate-level' model for slowness probing"
+current_run_name = f"probe_HFpre"
+current_description = f"Run that trains uniform contrastive critic on a pretrained ALBERT model. The level to which the" \
+                      f"critic then converges is then an indicator to how well the internal states of the model lend" \
+                      f"themselves to sequence disambiguation, AKA how 'slow' they are "
 RUNS[current_run_name] = {'commands': [
     f"ssh {current_server}",
 
     f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
     f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
-    f" --d_batch=26 --max_seq_length=256 "
-    f" --objective=albert_mlm_sop"
-    f" --replace_self_predictions=''",
-
-    f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-    f' --pretrained_model={current_run_name} --max_GPUs=1 '
-    f' --overrides "run_name={current_run_name}"; cd ..'
+    f" --d_batch=8 --max_seq_length=256 "
+    f" --replace_self_predictions=''"
+    f" --objective="
+    f" --freeze_main_model"
+    f" --DIR=uniform"
+    f" --DIR_loss_fraction=1"
 ],
     'description': current_description,
     'server': current_server}

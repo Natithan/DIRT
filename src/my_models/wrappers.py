@@ -9,13 +9,16 @@ from allennlp.data import TokenIndexer, Token, Vocabulary
 from config import FLAGS, MLM_OBJECTIVE_MAPPING, get_my_tokenizer
 from transformers import AlbertForMaskedLM
 
+from text_input_pipeline import OBJECTIVE_TO_DATA_FORMAT
+
 
 class PretrainObjectiveModelWrapper(Model):
     def __init__(self, model, finetune_stage=False):
         super().__init__(Vocabulary())
         self.finetune_stage = finetune_stage
         self.model = model(finetune_stage)
-        self.mlm_objective = MLM_OBJECTIVE_MAPPING[FLAGS.objective]
+        if FLAGS.objective:
+            self.mlm_objective = MLM_OBJECTIVE_MAPPING[FLAGS.objective]
         self.token_indexer = get_my_tokenizer()
 
         if FLAGS.selfpretrained_weights_path:
@@ -42,17 +45,15 @@ class PretrainObjectiveModelWrapper(Model):
         input_ids = input_ids.to(torch.long)
         new_input_dict = {}
         new_input_dict['padding_mask'] = input_ids != self.token_indexer.pad_token_id
-        if (not self.finetune_stage):
+        if (not self.finetune_stage) and FLAGS.objective:
             masked_ids, is_target_idx = self.mlm_objective(input_ids, self.token_indexer)
             new_input_dict['input_ids'] = masked_ids
+            new_input_dict['masked_lm_labels'] = torch.where(
+                is_target_idx, input_ids,
+                torch.ones_like(input_ids) * (-100))
         else:
             new_input_dict['input_ids'] = input_ids
-        new_input_dict['masked_lm_labels'] = torch.where(
-            is_target_idx, input_ids,
-            torch.ones_like(input_ids) * (-100))
-        if FLAGS.objective == 'simple_mlm':
-            new_input_dict['token_type_ids'] = token_type_ids
-        elif FLAGS.objective == 'albert_mlm_sop':
+        if OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective] == "pairwise_segment_sequences":
             seq_length = input_ids.shape[1]
             sep_idxs = torch.argmax((input_ids == self.token_indexer.sep_token_id) * reversed(
                 torch.arange(seq_length).to(input_ids.device)), 1, keepdim=True)
@@ -62,6 +63,9 @@ class PretrainObjectiveModelWrapper(Model):
                         torch.zeros(sep_idx), torch.ones(seq_length - sep_idx)
                     ], dim=-1).unsqueeze(0) for sep_idx in sep_idxs
                 ], dim=0).to(torch.long).to(input_ids.device)
+        else:
+            new_input_dict['token_type_ids'] = token_type_ids
+        if FLAGS.objective == 'albert_mlm_sop':
             new_input_dict['sentence_order_labels'] = sentence_order_labels
         result_dict = self.model(**new_input_dict)
         result_dict['mask'] = (new_input_dict['input_ids'] == self.token_indexer.mask_token_id)

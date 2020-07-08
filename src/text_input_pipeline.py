@@ -19,12 +19,16 @@ import pandas as pd
 import random
 import nltk
 
-OBJECTIVE_TO_DATA_FORMAT = OrderedDict(
+from my_utils.flag_util import DefaultOrderedDict
+
+OBJECTIVE_TO_DATA_FORMAT = DefaultOrderedDict(
+    lambda : "pairwise_segment_sequences",
     [
         ("t5_mlm", "single_segment_sequences",),
         ("simple_mlm", "single_segment_sequences",),
         ("albert_mlm_sop", "pairwise_segment_sequences",),
-    ]
+    ],
+
 )
 BLOB_SUBFOLDER = Path(FLAGS.blob_folder, OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective], str(FLAGS.pretrain_data_fraction))
 

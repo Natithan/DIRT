@@ -1634,7 +1634,7 @@ RUNS[current_run_name] = {'commands': [
 
     f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
     f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
-    f" --d_batch=28 --max_seq_length=256 "
+    f" --d_batch=26 --max_seq_length=256 "
     f" --objective=albert_mlm_sop"
     f" --replace_self_predictions=''",
 

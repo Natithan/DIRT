@@ -34,7 +34,9 @@ def masked_cosine_critic(target, predicted, mask):
     return (1 + mean_cosine_similarity)/2 # Squeeze between 0 and 1
 
 
-def contrastive_loss(in_state, predicted_in_state, mask):
+def contrastive_loss(in_state, predicted_in_state, mask=None):
+    if not mask:
+        mask = torch.zeros(predicted_in_state.shape[1]).to(torch.bool)
     if FLAGS.d_batch <= 1:
         raise ValueError('Using DIR requires batch size bigger than 1 to contrast with')
     d_batch = in_state.shape[0]

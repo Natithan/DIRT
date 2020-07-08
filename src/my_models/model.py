@@ -24,7 +24,8 @@ import logging as log
 log.basicConfig(
     format="%(asctime)s: %(message)s", datefmt="%m/%d %I:%M:%S %p", level=log.INFO
 )  # noqa
-combo_or_ablations = ['combo','only_top_down','only_adjacent']
+combo_or_ablations = ['combo', 'only_top_down', 'only_adjacent']
+
 
 class DIRTLMHead(Model):
     def __init__(self, finetune_stage=False):
@@ -65,7 +66,7 @@ class DIRTLMHead(Model):
                 get_activation(),
                 nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
             )
-        elif FLAGS.DIR == 'only_top_down': #TODO maybe ditch the old top_down flag
+        elif FLAGS.DIR == 'only_top_down':  # TODO maybe ditch the old top_down flag
 
             self.combiner = nn.Linear(1 * FLAGS.d_hidden, FLAGS.d_hidden)
             self.shared_top_down_predictor = nn.Sequential(
@@ -90,6 +91,81 @@ class DIRTLMHead(Model):
             for m in modules_to_freeze:
                 for p in m.parameters():
                     p.requires_grad = False
+
+        if FLAGS.DIR == 'uniform':
+            self.slow_extractor = nn.Sequential(
+                nn.Linear(FLAGS.d_hidden, FLAGS.d_ff),
+                get_activation(),
+                nn.Linear(FLAGS.d_ff, FLAGS.d_hidden),
+            )
+
+    def forward(self, input_ids, padding_mask, sentence_order_labels=None, masked_lm_labels=None, token_type_ids=None):
+
+        # ENCODING
+        clean = (FLAGS.DIR not in combo_or_ablations) or (not self.training) or (
+                self.finetune_stage and not FLAGS.replace_self_predictions)
+        if FLAGS.DIR in combo_or_ablations:
+            normalizer = FLAGS.nb_encoder_layers - FLAGS.top_down_distance
+
+            if FLAGS.replace_self_predictions == 'alternate':
+                self.learn_phase = not self.learn_phase
+            elif FLAGS.replace_self_predictions == 'always':
+                self.learn_phase = False
+        else:
+            normalizer = FLAGS.nb_encoder_layers
+        if clean:
+            encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)], clean=clean,
+                                   slow_feature_extractor=self.slow_extractor if FLAGS.DIR == 'uniform'else None)
+        else:
+
+            encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],
+                                   top_down=self.shared_top_down_predictor if not (
+                                               FLAGS.DIR == 'only_adjacent') else None,
+                                   from_left=self.shared_from_left_predictor if not (
+                                               FLAGS.DIR == 'only_top_down') else None,
+                                   from_right=self.shared_from_right_predictor if not (
+                                               FLAGS.DIR == 'only_top_down') else None,
+                                   combiner=self.combiner,
+                                   clean=clean,
+                                   learn_phase=self.learn_phase)
+        embedded_inputs = self.embedder(input_ids, token_type_ids)
+        encoded, _, cum_layer_loss, layer_loss_list = encoder(embedded_inputs, padding_mask)
+
+        cum_layer_loss = cum_layer_loss / normalizer  # Normalize layer loss by number of times it is calculated
+        result_dict = {}
+        result_dict['encoded_activations'] = encoded
+
+        vocab_scores = self.lm_head(encoded)
+        if not ((masked_lm_labels is None) and (sentence_order_labels is None)):
+            E2E_loss = 0
+            if masked_lm_labels is not None:
+                targets = process_targets_for_loss(masked_lm_labels)
+                vocab_scores_contiguous = vocab_scores.contiguous().view(-1, get_my_tokenizer().vocab_size)
+                MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
+                                                 targets)
+                E2E_loss += MLM_loss
+
+                self.metrics_dict['crossentropy_loss'] = MLM_loss.item()
+                self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
+
+                if FLAGS.DIR:
+                    self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
+                                                                                        torch.Tensor) else cum_layer_loss
+                    for layer, loss in enumerate(layer_loss_list):
+                        self.metrics_dict[f'DIR_loss_layer_{layer}'] = loss.item() if isinstance(loss,
+                                                                                                 torch.Tensor) else loss
+
+            if sentence_order_labels is not None and (FLAGS.objective == "albert_mlm_sop"):
+                pooled_output = self.pooler_activation(self.pooler(encoded[:, 0]))
+                SOP_loss = self.sop_head(pooled_output, sentence_order_labels)
+                self.metrics_dict['SOP_loss'] = SOP_loss.item()
+                E2E_loss += SOP_loss
+                self.metrics_dict['e2e_loss'] = E2E_loss.item()
+            result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
+                    1 - FLAGS.DIR_loss_fraction) * E2E_loss if FLAGS.DIR else E2E_loss
+        result_dict['vocab_scores'] = vocab_scores
+
+        return result_dict  # Dictionary format for AllenNLP trainer loop
 
     def load_HFpretrained_weights(self):
         hf_state_dict = AlbertForMaskedLM.from_pretrained(FLAGS.hf_model_handle).state_dict()
@@ -138,73 +214,8 @@ class DIRTLMHead(Model):
                     f'Unexpected mismatch in loading state dict: {u} in pretrained but not in current model.')
         log.info(f"Loaded pretrained weights from {FLAGS.hf_model_handle}")
 
-    def get_metrics(self, **kwargs):
+    def get_metrics(self, **_):
         return self.metrics_dict.copy()  # copy needed to avoid overlapping train and validation metrics
-
-    def forward(self, input_ids, padding_mask, sentence_order_labels=None, masked_lm_labels=None, token_type_ids=None):
-
-        # ENCODING
-        clean = (FLAGS.DIR not in combo_or_ablations) or (not self.training) or (
-                    self.finetune_stage and not FLAGS.replace_self_predictions)
-        if FLAGS.DIR in combo_or_ablations:
-            normalizer = FLAGS.nb_encoder_layers - FLAGS.top_down_distance
-
-            if FLAGS.replace_self_predictions == 'alternate':
-                self.learn_phase = not self.learn_phase
-            elif FLAGS.replace_self_predictions == 'always':
-                self.learn_phase = False
-        else:
-            normalizer = FLAGS.nb_encoder_layers
-        if clean:
-            encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)], clean=clean)
-        else:
-
-            encoder = MySequential(*[self.shared_encoder_block for _ in range(FLAGS.nb_encoder_layers)],
-                                   top_down=self.shared_top_down_predictor if not (FLAGS.DIR == 'only_adjacent') else None,
-                                   from_left=self.shared_from_left_predictor if not (FLAGS.DIR == 'only_top_down') else None,
-                                   from_right=self.shared_from_right_predictor if not (FLAGS.DIR == 'only_top_down') else None,
-                                   combiner=self.combiner,
-                                   clean=clean,
-                                   learn_phase=self.learn_phase)
-        embedded_inputs = self.embedder(input_ids, token_type_ids)
-        encoded, _, cum_layer_loss, layer_loss_list = encoder(embedded_inputs, padding_mask)
-
-        cum_layer_loss = cum_layer_loss / normalizer  # Normalize layer loss by number of times it is calculated
-        result_dict = {}
-        result_dict['encoded_activations'] = encoded
-
-        vocab_scores = self.lm_head(encoded)
-        if not ((masked_lm_labels is None) and (sentence_order_labels is None)):
-            E2E_loss = 0
-            if masked_lm_labels is not None:
-                targets = process_targets_for_loss(masked_lm_labels)
-                vocab_scores_contiguous = vocab_scores.contiguous().view(-1, get_my_tokenizer().vocab_size)
-                MLM_loss = nn.CrossEntropyLoss()(vocab_scores_contiguous,
-                                                 targets)
-                E2E_loss += MLM_loss
-
-                self.metrics_dict['crossentropy_loss'] = MLM_loss.item()
-                self.metrics_dict['perplexity'] = torch.exp(MLM_loss).item()
-
-                if FLAGS.DIR:
-                    self.metrics_dict['DIR_loss'] = cum_layer_loss.item() if isinstance(cum_layer_loss,
-                                                                                        torch.Tensor) else cum_layer_loss
-                    for layer, loss in enumerate(layer_loss_list):
-                        self.metrics_dict[f'DIR_loss_layer_{layer}'] = loss.item() if isinstance(loss,
-                                                                                                 torch.Tensor) else loss
-
-
-            if sentence_order_labels is not None and (FLAGS.objective == "albert_mlm_sop"):
-                pooled_output = self.pooler_activation(self.pooler(encoded[:, 0]))
-                SOP_loss = self.sop_head(pooled_output, sentence_order_labels)
-                self.metrics_dict['SOP_loss'] = SOP_loss.item()
-                E2E_loss += SOP_loss
-                self.metrics_dict['e2e_loss'] = E2E_loss.item()
-            result_dict['loss'] = FLAGS.DIR_loss_fraction * cum_layer_loss + (
-                        1 - FLAGS.DIR_loss_fraction) * E2E_loss if FLAGS.DIR else E2E_loss
-        result_dict['vocab_scores'] = vocab_scores
-
-        return result_dict  # Dictionary format for AllenNLP trainer loop
 
     def decode(self, output_dict):
         '''
@@ -332,10 +343,12 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
     '''
 
     def __init__(self, *args, top_down=None, from_left=None, from_right=None, combiner=None, clean=True,
-                 learn_phase=True):
+                 learn_phase=True,slow_feature_extractor=None):
         super().__init__(*args)
         self.clean = clean
         self.learn_phase = learn_phase
+        if slow_feature_extractor:
+            self.slow_feature_extractor = slow_feature_extractor
         if not self.clean:
             self.top_down_predictor = top_down
             self.from_left_predictor = from_left
@@ -352,7 +365,8 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
         cum_layer_loss = 0
         layer_loss_list = []
         for layer_idx, module in enumerate(layers):  # TODO fix heavy mem overhead
-            if FLAGS.DIR in combo_or_ablations and (layer_idx + FLAGS.top_down_distance < len(layers)) and (not self.clean):
+            if FLAGS.DIR in combo_or_ablations and (layer_idx + FLAGS.top_down_distance < len(layers)) and (
+            not self.clean):
                 in_activations, padding_mask = inputs[:2]
                 masked_inputs, DIRT_mask = apply_sequence_mask(in_activations)
                 prediction_sources = []
@@ -369,7 +383,6 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
                     prediction_sources.append(from_left_prediction)
                     prediction_sources.append(from_right_prediction)
 
-
                 combined_prediction = self.combiner(
                     torch.cat(prediction_sources,
                               dim=-1))
@@ -385,12 +398,40 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
                 layer_loss_list.append(layer_loss)
                 if not self.learn_phase:  # Wipe some internal states and replace them with predictions
                     inputs = (torch.where(DIRT_mask[None, :, None], inputs[0], combined_prediction),) + inputs[1:]
-
+            if FLAGS.DIR == "uniform":
+                d_batch = inputs[0].shape[0]
+                is_not_padding = inputs[1]
+                # Only work with non-padded indices: max(amount) = smallest sequence in minibatch
+                if len((is_not_padding == False).nonzero()) != 0:
+                    min_normal_token_length = int(torch.min((is_not_padding == False).nonzero()[:, 1]))
+                else:
+                    min_normal_token_length = inputs[0].shape[1]
+                k = min(FLAGS.max_contrast_number, min_normal_token_length)
+                sources = None
+                targets = None
+                # Allow for indices from all over the sequences. Only disallowing padding, so also allowing [CLS], [SEP]
+                for i in range(d_batch):
+                    random_idxs = torch.randperm((is_not_padding[i] == True).nonzero().shape[0])
+                    source_meta_idxs = [j for j in range(k - 1) for i in range(k - j - 1)]
+                    target_meta_idxs = [i for j in range(1, k) for i in range(j, k)]
+                    new_sources = inputs[0][i][random_idxs[source_meta_idxs]].unsqueeze(0)
+                    new_targets = inputs[0][i][random_idxs[target_meta_idxs]].unsqueeze(0)
+                    if sources == None:
+                        sources = new_sources
+                        targets = new_targets
+                    else:
+                        sources = torch.cat([sources, new_sources], dim=0)
+                        targets = torch.cat([targets, new_targets], dim=0)
+                slow_sources = self.slow_feature_extractor(sources)
+                slow_targets = self.slow_feature_extractor(targets)
+                layer_loss = contrastive_loss(slow_sources, slow_targets)
+                cum_layer_loss += layer_loss
+                layer_loss_list.append(layer_loss)
             if type(inputs) == tuple:
                 inputs = module(*inputs)
             else:
                 inputs = module(inputs)
-        if (not self.clean) and FLAGS.DIR in combo_or_ablations:
+        if ((not self.clean) and FLAGS.DIR in combo_or_ablations) or FLAGS.DIR == 'uniform':
             inputs = inputs[:2] + (cum_layer_loss,) + (layer_loss_list,)
         return inputs
 

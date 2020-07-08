@@ -79,6 +79,10 @@ flags.DEFINE_string("blob_folder", Path(STORAGE_ROOT, "blobs").as_posix(),
 flags.DEFINE_bool("old_pretrain_data", False,
                   "Whether to do pretraining on an old version of the pretraining data: only the train split of the Gutenberg corpus.")
 
+flags.DEFINE_integer("max_contrast_number", 30,
+                     "Maximum number of tokens to consider for contrasting. Contrasting memory usage "
+                     "scales with the square of this number.")
+
 # Flags determining denoising objective
 flags.DEFINE_string("objective", "simple_mlm",
                     "Name of the denoising objective to use (see OBJECTIVE_MAPPING)")
@@ -90,7 +94,15 @@ flags.DEFINE_float("preserve_fraction", .10, "Fraction of masked tokens that are
 # Flags that determine what the model looks like
 flags.DEFINE_string("model", "my_model", "Name of the model to use (see MODEL_MAPPING)")
 flags.DEFINE_string("DIR", '',
-                    "Which variant of distributed internal regression to employ. Options are: combo, top_down, from_projection, only_top_down, only_adjacent, or empty if not using DIR (default)")
+                    "Which variant of distributed internal regression to employ. Options are: "
+                    "combo,"
+                    " top_down,"
+                    " from_projection,"
+                    " only_top_down,"
+                    " only_adjacent,"
+                    " uniform: regress closer to (the projection of) a random other token in the same sequence"
+                    "          than to a set of random tokens in different sequences (drawn from the minibatch),"
+                    " or empty if not using DIR (default)")
 flags.DEFINE_integer("d_emb", 128, "Size of token encodings before contextualization")
 flags.DEFINE_integer("d_hidden", 2048, "Size of token encodings in hidden layers (contextualized)")
 flags.DEFINE_integer("d_ff", 8192, "Number of hidden units in feedforward parts of attention blocks")

@@ -19,6 +19,81 @@ from config import FLAGS
 RUNS = {}
 BASE_SERVER = "arwen"
 
+
+def track_run_in_sheets(run_name, commands, description, server):
+    SPREADSHEET_ID = '1JBFTrsLGd35ZZ2ATbOmv6WzF57A2xtEhneU5vQQXtj4'
+    SHEET_ID = 0
+    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'google_sheets_credentials.json', SCOPES)
+            creds = flow.run_console()
+        # Save the credentials for the next run
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+
+    service = build('sheets', 'v4', credentials=creds)
+
+    # The ID of the spreadsheet to update.
+    spreadsheet_id = SPREADSHEET_ID
+
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    repo = git.Repo(search_parent_directories=True)
+    git_sha = repo.head.object.hexsha
+    git_link = f"https://github.com/Natithan/phd/commit/{git_sha}"
+    script = ';'.join(commands)
+    status = 'Running'
+    joiner = "__JOINER__"
+
+    batch_update_values_request_body = {
+        'requests': [
+            {
+                "insertDimension": {
+                    "range": {
+                        "dimension": "ROWS",
+                        "startIndex": 1,
+                        "endIndex": 2,
+                        "sheetId": SHEET_ID
+                    },
+                    "inheritFromBefore": False
+                }
+            },
+            {
+                "pasteData": {
+                    "coordinate": {
+                        "rowIndex": 1,
+                        "columnIndex": 0,
+                        "sheetId": SHEET_ID
+                    },
+
+                    "data": joiner.join([
+                        timestamp, run_name, description, git_sha, git_link, server, script, status
+                    ]),
+                    "delimiter": joiner
+                }
+            }
+        ]
+    }
+
+    request = service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=batch_update_values_request_body)
+
+    response = request.execute()
+
+    pprint(response)
+
+
 #
 # current_run_name = "HFRoberta_HFpre_nomypre_2"
 # current_description = "Re-running the roberta baseline to (hopefully) have the results be stored in my results sheet, " \
@@ -1516,115 +1591,59 @@ BASE_SERVER = "arwen"
 #         'description': current_description,
 #         'server': current_server}
 
-for current_server, current_lambda, current_ablation in zip(
-        [
-            # 'sauron',
-            'frodo'
-        ],
-        [
-            # 0.4,
-            0.4
-        ],
-    [
-        # 'only_adjacent',
-        'only_top_down'
-    ]
-):
-    current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}_{current_ablation}_r2"
-    current_description = f"Second run to compare with HFpre_MLM_SOP_lambda_{current_lambda}. " \
-                          f"Checks the impact of using {' '.join(current_ablation.split('_'))} states"
-    RUNS[current_run_name] = {'commands': [
-        f"ssh {current_server}",
+# for current_server, current_lambda, current_ablation in zip(
+#         [
+#             # 'sauron',
+#             'frodo'
+#         ],
+#         [
+#             # 0.4,
+#             0.4
+#         ],
+#     [
+#         # 'only_adjacent',
+#         'only_top_down'
+#     ]
+# ):
+#     current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}_{current_ablation}_r2"
+#     current_description = f"Second run to compare with HFpre_MLM_SOP_lambda_{current_lambda}. " \
+#                           f"Checks the impact of using {' '.join(current_ablation.split('_'))} states"
+#     RUNS[current_run_name] = {'commands': [
+#         f"ssh {current_server}",
+#
+#         f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+#         f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+#         f" --d_batch=8 --max_seq_length=256 "
+#         f" --DIR={current_ablation}"
+#         f" --objective=albert_mlm_sop"
+#         f" --replace_self_predictions=''"
+#         f" --use_HFpretrained_weights"
+#         f" --DIR_loss_fraction={current_lambda}",
+#
+#         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#         f' --pretrained_model={current_run_name} --max_GPUs=1 '
+#         f' --overrides "run_name={current_run_name}"; cd ..'
+#     ],
+#         'description': current_description,
+#         'server': current_server}
+current_server = 'frodo'
+current_run_name = f"noHFpre_MLM_SOP"
+current_description = f"Run to create 'Intermediate-level' model for slowness probing"
+RUNS[current_run_name] = {'commands': [
+    f"ssh {current_server}",
 
-        f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
-        f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
-        f" --d_batch=8 --max_seq_length=256 "
-        f" --DIR={current_ablation}"
-        f" --objective=albert_mlm_sop"
-        f" --replace_self_predictions=''"
-        f" --use_HFpretrained_weights"
-        f" --DIR_loss_fraction={current_lambda}",
+    f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+    f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+    f" --d_batch=24 --max_seq_length=256 "
+    f" --objective=albert_mlm_sop"
+    f" --replace_self_predictions=''",
 
-        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-        f' --pretrained_model={current_run_name} --max_GPUs=1 '
-        f' --overrides "run_name={current_run_name}"; cd ..'
-    ],
-        'description': current_description,
-        'server': current_server}
-
-def track_run_in_sheets(run_name, commands, description, server):
-    SPREADSHEET_ID = '1JBFTrsLGd35ZZ2ATbOmv6WzF57A2xtEhneU5vQQXtj4'
-    SHEET_ID = 0
-    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-
-    creds = None
-    # The file token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'google_sheets_credentials.json', SCOPES)
-            creds = flow.run_console()
-        # Save the credentials for the next run
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
-
-    service = build('sheets', 'v4', credentials=creds)
-
-    # The ID of the spreadsheet to update.
-    spreadsheet_id = SPREADSHEET_ID
-
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    repo = git.Repo(search_parent_directories=True)
-    git_sha = repo.head.object.hexsha
-    git_link = f"https://github.com/Natithan/phd/commit/{git_sha}"
-    script = ';'.join(commands)
-    status = 'Running'
-    joiner = "__JOINER__"
-
-    batch_update_values_request_body = {
-        'requests': [
-            {
-                "insertDimension": {
-                    "range": {
-                        "dimension": "ROWS",
-                        "startIndex": 1,
-                        "endIndex": 2,
-                        "sheetId": SHEET_ID
-                    },
-                    "inheritFromBefore": False
-                }
-            },
-            {
-                "pasteData": {
-                    "coordinate": {
-                        "rowIndex": 1,
-                        "columnIndex": 0,
-                        "sheetId": SHEET_ID
-                    },
-
-                    "data": joiner.join([
-                        timestamp, run_name, description, git_sha, git_link, server, script, status
-                    ]),
-                    "delimiter": joiner
-                }
-            }
-        ]
-    }
-
-    request = service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=batch_update_values_request_body)
-
-    response = request.execute()
-
-    pprint(response)
-
+    f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+    f' --pretrained_model={current_run_name} --max_GPUs=1 '
+    f' --overrides "run_name={current_run_name}"; cd ..'
+],
+    'description': current_description,
+    'server': current_server}
 
 server = libtmux.Server()
 session = server.find_where({"session_name": "exps"})

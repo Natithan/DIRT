@@ -36,7 +36,7 @@ def masked_cosine_critic(target, predicted, mask):
 
 def contrastive_loss(in_state, predicted_in_state, mask=None):
     if not mask:
-        mask = torch.zeros(predicted_in_state.shape[1]).to(torch.bool)
+        mask = torch.zeros(predicted_in_state.shape[1]).to(torch.bool).to(in_state.device)
     if FLAGS.d_batch <= 1:
         raise ValueError('Using DIR requires batch size bigger than 1 to contrast with')
     d_batch = in_state.shape[0]
@@ -49,10 +49,15 @@ def contrastive_loss(in_state, predicted_in_state, mask=None):
         positive_loss = masked_MSE_loss(in_state, predicted_in_state, mask)
         layer_loss = positive_loss / negative_loss
     elif FLAGS.contrastive_loss == 'CE':
-        positive_similarity = torch.log(masked_cosine_critic(in_state, predicted_in_state, mask))
-        negatives_dissimilarity = sum([torch.log(1-masked_cosine_critic(in_state.roll(shifts=i, dims=0), predicted_in_state, mask))
-            for i in range(d_batch - 1)])
-        layer_loss = - (positive_similarity + negatives_dissimilarity)
+        positive_similarity = masked_cosine_critic(in_state, predicted_in_state, mask)
+        negatives_similarities = [masked_cosine_critic(in_state.roll(shifts=i + 1, dims=0), predicted_in_state, mask)
+                                  for i in range(d_batch - 1)]
+        normalizer = positive_similarity + sum(negatives_similarities)  # To make sure they sum to 1
+        positive_log_prob = torch.log(positive_similarity / normalizer)
+        negatives_log_probs = sum([torch.log(1 - neg_sim / normalizer)
+                                   for neg_sim in negatives_similarities])
+        layer_loss = - (positive_log_prob + negatives_log_probs)
+
     return layer_loss
 
 

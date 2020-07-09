@@ -26,19 +26,30 @@ class PretrainObjectiveModelWrapper(Model):
 
     def load_selfpretrained_weights(self):
         target_state_dict = torch.load(FLAGS.selfpretrained_weights_path, map_location='cpu')
-        if FLAGS.retrain_self_predictor:
-            self_prediction_parameters = [
-                'top_down_regressor',
-                'combiner', 'shared_top_down_predictor', 'shared_from_left_predictor', 'shared_from_right_predictor'
 
-            ]
+        self_prediction_parameters = [
+            'top_down_regressor',
+            'combiner', 'shared_top_down_predictor', 'shared_from_left_predictor', 'shared_from_right_predictor',
+            'slow_extractor'
+
+        ]
+        if FLAGS.retrain_self_predictor:
             target_state_dict = {k: v for (k, v) in target_state_dict.items() if not any([s in k for s in
                                                                                           self_prediction_parameters])}
         missing, unexpected = self.load_state_dict(target_state_dict, strict=False)
-        assert not unexpected
+        allowed_unexpected = [
+            'pooler',
+            'sop_head',
+            'lm_head'
+        ]
+        allowed_missing = self_prediction_parameters
         for m in missing:
-            if not any([s in m for s in self_prediction_parameters]):
+            if not any([s in m for s in allowed_missing]):
                 raise ValueError(f'Unexpected mismatch in loading state dict: {m} not present in pretrained.')
+        for u in unexpected:
+            if not any([s in u for s in allowed_unexpected]):
+                raise ValueError(
+                    f'Unexpected mismatch in loading state dict: {u} in pretrained but not in current model.')
 
     def forward(self, input_ids,sentence_order_labels=None, #TODO make sentence_order_labels_arg optional
                 token_type_ids=None):  # for now ignore ids-offsets and word-level padding mask: just use bpe-level tokens

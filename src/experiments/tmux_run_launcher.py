@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 
 import libtmux
 from numpy.ma import arange
@@ -15,6 +16,7 @@ import git
 import time
 
 from config import FLAGS
+from constants import STORAGE_ROOT
 
 RUNS = {}
 BASE_SERVER = "arwen"
@@ -1645,47 +1647,47 @@ def track_run_in_sheets(run_name, commands, description, server):
 #     'description': current_description,
 #     'server': current_server}
 
-current_server = 'frodo'
-current_run_name = f"probe_HFpre_nomypre"
-current_description = f"Run that trains uniform contrastive critic on a pretrained ALBERT model. The level to which the" \
-                      f"critic then converges is then an indicator to how well the internal states of the model lend" \
-                      f"themselves to sequence disambiguation, AKA how 'slow' they are "
-RUNS[current_run_name] = {'commands': [
-    f"ssh {current_server}",
-
-    f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
-    f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
-    f" --d_batch=8 --max_seq_length=256 "
-    f" --replace_self_predictions=''"
-    f" --objective="
-    f" --freeze_main_model"
-    f" --use_HFpretrained_weights"
-    f" --DIR=uniform"
-    f" --DIR_loss_fraction=1"
-],
-    'description': current_description,
-    'server': current_server}
-
-current_server = 'arwen'
-current_run_name = f"probe_noHFpre_nomypre"
-current_description = f"Run that trains uniform contrastive critic on a randomly initialized ALBERT model." \
-                      f"Expectation = it should be really hard to learn. The only regularity is the co-occurence of words:" \
-                      f" words have random internal states, but the states are the same (at the embedding stage) if it's the same word "
-RUNS[current_run_name] = {'commands': [
-    f"ssh {current_server}",
-
-    f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
-    f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
-    f" --d_batch=8 --max_seq_length=256 "
-    f" --replace_self_predictions=''"
-    f" --objective="
-    f" --freeze_main_model"
-    f" --DIR=uniform"
-    f" --DIR_loss_fraction=1"
-    f" --device_idxs=3"
-],
-    'description': current_description,
-    'server': current_server}
+# current_server = 'frodo'
+# current_run_name = f"probe_HFpre_nomypre"
+# current_description = f"Run that trains uniform contrastive critic on a pretrained ALBERT model. The level to which the" \
+#                       f"critic then converges is then an indicator to how well the internal states of the model lend" \
+#                       f"themselves to sequence disambiguation, AKA how 'slow' they are "
+# RUNS[current_run_name] = {'commands': [
+#     f"ssh {current_server}",
+#
+#     f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+#     f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+#     f" --d_batch=8 --max_seq_length=256 "
+#     f" --replace_self_predictions=''"
+#     f" --objective="
+#     f" --freeze_main_model"
+#     f" --use_HFpretrained_weights"
+#     f" --DIR=uniform"
+#     f" --DIR_loss_fraction=1"
+# ],
+#     'description': current_description,
+#     'server': current_server}
+#
+# current_server = 'arwen'
+# current_run_name = f"probe_noHFpre_nomypre"
+# current_description = f"Run that trains uniform contrastive critic on a randomly initialized ALBERT model." \
+#                       f"Expectation = it should be really hard to learn. The only regularity is the co-occurence of words:" \
+#                       f" words have random internal states, but the states are the same (at the embedding stage) if it's the same word "
+# RUNS[current_run_name] = {'commands': [
+#     f"ssh {current_server}",
+#
+#     f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+#     f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+#     f" --d_batch=8 --max_seq_length=256 "
+#     f" --replace_self_predictions=''"
+#     f" --objective="
+#     f" --freeze_main_model"
+#     f" --DIR=uniform"
+#     f" --DIR_loss_fraction=1"
+#     f" --device_idxs=3"
+# ],
+#     'description': current_description,
+#     'server': current_server}
 
 # current_server = 'arwen'
 # current_run_name = f"noHFpre_MLM_SOP_0.5_data_fraction"
@@ -1707,7 +1709,39 @@ RUNS[current_run_name] = {'commands': [
 # ],
 #     'description': current_description,
 #     'server': current_server}
+current_server = 'frodo'
+current_run_name = f"probe_noHFpre_mypre_0.1"
+current_description = f"Run that trains uniform contrastive critic on an ALBERT model that trained on a 0.1 fraction" \
+                      f" of my pretraining data." \
+                      f"Expectation = slow-performance will be between random and HF pretrained"
+RUNS[current_run_name] = {'commands': [
+    f"ssh {current_server}",
 
+    f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+    f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+    f" --d_batch=8 --max_seq_length=256 "
+    f" --replace_self_predictions=''"
+    f" --objective="
+    f" --selfpretrained_weights_path={Path(STORAGE_ROOT,'output','pretraining','noHFpre_MLM_SOP','best.th').as_posix()}"
+    f" --freeze_main_model"
+    f" --DIR=uniform"
+    f" --DIR_loss_fraction=1"
+],
+    'description': current_description,
+    'server': current_server}
+
+current_server = 'frodo'
+current_run_name = f"noHFpre_nomypre"
+current_description = f"Test no-pretraining SG performance with latest setup"
+RUNS[current_run_name] = {'commands': [
+    f"ssh {current_server}",
+
+    f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+    f'  --max_GPUs=1 '
+    f' --overrides "run_name={current_run_name}"; cd ..'
+],
+    'description': current_description,
+    'server': current_server}
 
 server = libtmux.Server()
 session = server.find_where({"session_name": "exps"})
@@ -1725,17 +1759,17 @@ for run_name, run_values in RUNS.items():
     pane = w.panes[0]
     print(f"Sending following commands to window  {w['window_name']} : {';'.join(commands)}")
     print("Logging run in google sheet")
-    track_run_in_sheets(run_name, commands, description, server)
-    for command in commands:
-        if 'ssh' in command:
-            pane.send_keys('hostname')
-            time.sleep(1)  # Wait for the output to be printed
-            current_host = pane.cmd('capture-pane', '-p').stdout[-2]
-            if command == f'ssh {current_host}':  # Don't ssh extra to a host we're already on
-                continue
-            else:
-                pane.send_keys(command)
-                pane.send_keys('screen')
-        else:
-            pane.send_keys(command)
-    time.sleep(20)  # To make sure the same GPUs aren't picked
+    # track_run_in_sheets(run_name, commands, description, server)
+    # for command in commands:
+    #     if 'ssh' in command:
+    #         pane.send_keys('hostname')
+    #         time.sleep(1)  # Wait for the output to be printed
+    #         current_host = pane.cmd('capture-pane', '-p').stdout[-2]
+    #         if command == f'ssh {current_host}':  # Don't ssh extra to a host we're already on
+    #             continue
+    #         else:
+    #             pane.send_keys(command)
+    #             pane.send_keys('screen')
+    #     else:
+    #         pane.send_keys(command)
+    # time.sleep(20)  # To make sure the same GPUs aren't picked

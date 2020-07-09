@@ -75,7 +75,8 @@ class MyTrainer(GradientDescentTrainer):
         if self.data_loader.dataset.current_permuted_indices is None:
             starting_batch = 0
         else:
-            batches_per_row = len(self.data_loader) / len(self.data_loader.dataset.current_permuted_indices)
+            # batches_per_row = len(self.data_loader) / len(self.data_loader.dataset.current_permuted_indices)
+            batches_per_row = 1/FLAGS.d_batch
             batches_per_row /= self._num_gradient_accumulation_steps
             starting_batch = math.ceil(batches_per_row * self.data_loader.dataset.row_index)
 

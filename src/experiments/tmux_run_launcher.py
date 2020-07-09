@@ -1759,17 +1759,17 @@ for run_name, run_values in RUNS.items():
     pane = w.panes[0]
     print(f"Sending following commands to window  {w['window_name']} : {';'.join(commands)}")
     print("Logging run in google sheet")
-    # track_run_in_sheets(run_name, commands, description, server)
-    # for command in commands:
-    #     if 'ssh' in command:
-    #         pane.send_keys('hostname')
-    #         time.sleep(1)  # Wait for the output to be printed
-    #         current_host = pane.cmd('capture-pane', '-p').stdout[-2]
-    #         if command == f'ssh {current_host}':  # Don't ssh extra to a host we're already on
-    #             continue
-    #         else:
-    #             pane.send_keys(command)
-    #             pane.send_keys('screen')
-    #     else:
-    #         pane.send_keys(command)
-    # time.sleep(20)  # To make sure the same GPUs aren't picked
+    track_run_in_sheets(run_name, commands, description, server)
+    for command in commands:
+        if 'ssh' in command:
+            pane.send_keys('hostname')
+            time.sleep(1)  # Wait for the output to be printed
+            current_host = pane.cmd('capture-pane', '-p').stdout[-2]
+            if command == f'ssh {current_host}':  # Don't ssh extra to a host we're already on
+                continue
+            else:
+                pane.send_keys(command)
+                pane.send_keys('screen')
+        else:
+            pane.send_keys(command)
+    time.sleep(20)  # To make sure the same GPUs aren't picked

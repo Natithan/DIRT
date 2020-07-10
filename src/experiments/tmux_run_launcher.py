@@ -1709,39 +1709,71 @@ def track_run_in_sheets(run_name, commands, description, server):
 # ],
 #     'description': current_description,
 #     'server': current_server}
-current_server = 'frodo'
-current_run_name = f"probe_noHFpre_mypre_0.1"
-current_description = f"Run that trains uniform contrastive critic on an ALBERT model that trained on a 0.1 fraction" \
-                      f" of my pretraining data." \
-                      f"Expectation = slow-performance will be between random and HF pretrained"
-RUNS[current_run_name] = {'commands': [
-    f"ssh {current_server}",
+# current_server = 'frodo'
+# current_run_name = f"probe_noHFpre_mypre_0.1"
+# current_description = f"Run that trains uniform contrastive critic on an ALBERT model that trained on a 0.1 fraction" \
+#                       f" of my pretraining data." \
+#                       f"Expectation = slow-performance will be between random and HF pretrained"
+# RUNS[current_run_name] = {'commands': [
+#     f"ssh {current_server}",
+#
+#     f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+#     f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+#     f" --d_batch=8 --max_seq_length=256 "
+#     f" --replace_self_predictions=''"
+#     f" --objective="
+#     f" --selfpretrained_weights_path={Path(STORAGE_ROOT,'output','pretraining','noHFpre_MLM_SOP','best.th').as_posix()}"
+#     f" --freeze_main_model"
+#     f" --DIR=uniform"
+#     f" --DIR_loss_fraction=1"
+# ],
+#     'description': current_description,
+#     'server': current_server}
+#
+# current_server = 'frodo'
+# current_run_name = f"noHFpre_nomypre"
+# current_description = f"Test no-pretraining SG performance with latest setup"
+# RUNS[current_run_name] = {'commands': [
+#     f"ssh {current_server}",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f'  --max_GPUs=1 '
+#     f' --overrides "run_name={current_run_name}"; cd ..'
+# ],
+#     'description': current_description,
+#     'server': current_server}
 
-    f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
-    f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
-    f" --d_batch=8 --max_seq_length=256 "
-    f" --replace_self_predictions=''"
-    f" --objective="
-    f" --selfpretrained_weights_path={Path(STORAGE_ROOT,'output','pretraining','noHFpre_MLM_SOP','best.th').as_posix()}"
-    f" --freeze_main_model"
-    f" --DIR=uniform"
-    f" --DIR_loss_fraction=1"
-],
-    'description': current_description,
-    'server': current_server}
+for current_server, current_lambda in zip(
 
-current_server = 'frodo'
-current_run_name = f"noHFpre_nomypre"
-current_description = f"Test no-pretraining SG performance with latest setup"
-RUNS[current_run_name] = {'commands': [
-    f"ssh {current_server}",
+        [
+            # 'frodo',
+            'sauron'
+        ],
+        [
+            # 0.9,
+            1
+        ]
+):
+    current_run_name = f"HFpre_MLM_SOP_lambda_{current_lambda}_run3"
+    current_description = f"A third run at lambda {current_lambda} with the upgraded baseline. To complete the table"
+    RUNS[current_run_name] = {'commands': [
+        f"ssh {current_server}",
 
-    f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-    f'  --max_GPUs=1 '
-    f' --overrides "run_name={current_run_name}"; cd ..'
-],
-    'description': current_description,
-    'server': current_server}
+        f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+        f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+        f" --d_batch=8 --max_seq_length=256 "
+        f" --DIR=combo"
+        f" --objective=albert_mlm_sop"
+        f" --replace_self_predictions=''"
+        f" --use_HFpretrained_weights"
+        f" --DIR_loss_fraction={current_lambda}",
+
+        f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+        f' --pretrained_model={current_run_name} --max_GPUs=1 '
+        f' --overrides "run_name={current_run_name}"; cd ..'
+    ],
+        'description': current_description,
+        'server': current_server}
 
 server = libtmux.Server()
 session = server.find_where({"session_name": "exps"})

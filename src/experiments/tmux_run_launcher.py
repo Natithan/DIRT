@@ -1766,6 +1766,7 @@ for current_server, current_lambda in zip(
         f" --objective=albert_mlm_sop"
         f" --replace_self_predictions=''"
         f" --use_HFpretrained_weights"
+        f" --contrastive_loss=MSE"
         f" --DIR_loss_fraction={current_lambda}",
 
         f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '

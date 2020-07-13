@@ -78,7 +78,7 @@ class MyTrainer(GradientDescentTrainer):
             # batches_per_row = len(self.data_loader) / len(self.data_loader.dataset.current_permuted_indices)
             batches_per_row = 1/FLAGS.d_batch
             batches_per_row /= self._num_gradient_accumulation_steps
-            starting_batch = math.ceil(batches_per_row * self.data_loader.dataset.row_index)
+            starting_batch = math.ceil(batches_per_row * self.data_loader.dataset.total_rows_had)
 
         # Having multiple tqdm bars in case of distributed training will be a mess. Hence only the master's
         # progress is shown

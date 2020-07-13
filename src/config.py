@@ -154,6 +154,7 @@ flags.DEFINE_string("replace_self_predictions", "", "When to replace internal st
                                                     "\"always\" to always replace internal states (this assumes "
                                                     "having a trained self-predictor)")
 flags.DEFINE_string("contrastive_loss","CE","Type of contrastive loss to use.")
+flags.DEFINE_bool("input_contrasting",False,"Whether to do contrasting also before any contextualization has taken place")
 
 # For testing for slow features by retraining self-prediction components on a self-trained transformer
 flags.DEFINE_bool("retrain_self_predictor", False, "Only relevant if selfpretrained_weights_path is not empty."

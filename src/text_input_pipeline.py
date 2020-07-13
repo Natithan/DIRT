@@ -421,6 +421,7 @@ class CombinedSplitDataset(IterableDataset):
         self.row_index = None
         self.current_permuted_indices = None
         self.current_chunk_path = None
+        self.total_rows_had = 0
 
     def make_chunks(self):
         total_data_dict = self.get_data()
@@ -440,7 +441,6 @@ class CombinedSplitDataset(IterableDataset):
                 self.pop_indices.append(random.randrange(length))
                 length -= 1
             assert self.chunk_paths, f"{self.split_chunks_folder} is empty!"
-
         while self.chunk_paths or self.current_chunk_path:
             assert len(self.pop_indices) == len(
                 self.chunk_paths)
@@ -461,6 +461,7 @@ class CombinedSplitDataset(IterableDataset):
                 yield {k: v[self.row_index] for k, v in chunk_data.items()}
 
                 self.row_index += 1
+                self.total_rows_had += 1
             self.current_permuted_indices = None
             self.current_chunk_path = None
             self.row_index = None

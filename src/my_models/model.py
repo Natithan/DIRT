@@ -131,8 +131,18 @@ class DIRTLMHead(Model):
                                    clean=clean,
                                    learn_phase=self.learn_phase)
         embedded_inputs = self.embedder(input_ids, token_type_ids)
-        encoded, _, cum_layer_loss, layer_loss_list = encoder(embedded_inputs, padding_mask, token_type_ids)
+        return_dict = encoder(inputs=embedded_inputs, padding_mask=padding_mask,
+                                                              token_type_ids=token_type_ids)
+        encoded, cum_layer_loss, layer_loss_list = return_dict['inputs'], return_dict['cum_layer_loss'], return_dict['layer_loss_list']
 
+        if FLAGS.input_contrasting:
+            sources, targets = select_source_target_pairs(embedded_inputs, padding_mask, token_type_ids)
+            slow_sources = encoder.slow_feature_extractor(sources)
+            slow_targets = encoder.slow_feature_extractor(targets)
+            layer_loss = contrastive_loss(slow_sources, slow_targets)
+            cum_layer_loss += layer_loss
+            layer_loss_list = [layer_loss] + layer_loss_list
+            normalizer += 1
         cum_layer_loss = cum_layer_loss / normalizer  # Normalize layer loss by number of times it is calculated
         result_dict = {}
         result_dict['encoded_activations'] = encoded
@@ -313,23 +323,23 @@ class EncoderBlock(nn.Module):
             )
             # self.top_down_regressor = nn.Sequential()
 
-    def forward(self, in_state, padding_mask,
+    def forward(self, inputs, padding_mask,
                 cum_layer_loss=0, layer_loss_list=None):
         if layer_loss_list == None:
             layer_loss_list = []
-        attention_output_dict = self.multihead_attention(in_state, in_state, padding_mask)
+        attention_output_dict = self.multihead_attention(inputs, inputs, padding_mask)
         att_out = attention_output_dict['activations']
         out_state = self.feedforward(att_out)
 
         # Top-down regression
         if not self.finetune_stage:  # TODO make sure it doesn't use all the extra mem here
             if FLAGS.DIR == 'top_down':
-                masked_in_state, mask = apply_sequence_mask(in_state)
-                masked_att_out = self.multihead_attention(masked_in_state, in_state, padding_mask)['activations']
+                masked_in_state, mask = apply_sequence_mask(inputs)
+                masked_att_out = self.multihead_attention(masked_in_state, inputs, padding_mask)['activations']
                 masked_out_state = self.feedforward(
                     masked_att_out)  # TODO should add activation? And should add sometimes-not-masking?
                 predicted_in_state = self.top_down_regressor(masked_out_state)
-                layer_loss = contrastive_loss(in_state, predicted_in_state, mask)
+                layer_loss = contrastive_loss(inputs, predicted_in_state, mask)
             elif FLAGS.DIR == 'from_projection':
                 layer_loss = attention_output_dict['layer_loss']
             else:
@@ -337,7 +347,61 @@ class EncoderBlock(nn.Module):
         else:
             layer_loss = 0
         layer_loss_list.append(layer_loss)
-        return out_state, padding_mask, layer_loss + cum_layer_loss, layer_loss_list
+        return {'inputs':out_state,
+                'padding_mask':padding_mask,
+                'cum_layer_loss' : layer_loss + cum_layer_loss,
+                'layer_loss_list': layer_loss_list}
+
+
+def select_source_target_pairs(internal_states, is_not_padding, token_type_ids):
+    d_batch = internal_states.shape[0]
+    # Only work with non-padded indices: max(amount) = smallest sequence in minibatch
+    if OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective] == "single_segment_sequences":
+        min_normal_token_length = int(torch.min(is_not_padding.sum(dim=-1)))
+        k = min(FLAGS.max_contrast_number, min_normal_token_length)
+
+    elif OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective] == "pairwise_segment_sequences":
+        min_s1_tokens_length = torch.min((token_type_ids == 0).sum(dim=-1))
+        min_s2_tokens_length = torch.min((is_not_padding & (token_type_ids == 1)).sum(dim=-1))
+        k1 = min(FLAGS.max_contrast_number, min_s1_tokens_length)
+        k2 = min(FLAGS.max_contrast_number, min_s2_tokens_length)
+    sources = None
+    targets = None
+    # Allow for indices from all over the sequences. Only disallowing padding, so also allowing [CLS], [SEP]
+    for b in range(d_batch):
+        if OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective] == "single_segment_sequences":
+            random_idxs = torch.randperm((is_not_padding[b] == True).nonzero().shape[0])
+            source_meta_idxs = [j for j in range(k - 1) for _ in range(k - j - 1)]
+            target_meta_idxs = [i for j in range(1, k) for i in range(j, k)]
+            new_sources = internal_states[b][random_idxs[source_meta_idxs]].unsqueeze(0)
+            new_targets = internal_states[b][random_idxs[target_meta_idxs]].unsqueeze(0)
+        elif OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective] == "pairwise_segment_sequences":
+            s1_length = int((token_type_ids[b] == 0).sum())
+            s2_length = int(((is_not_padding[b] == True) & (token_type_ids[b] == 1)).sum())
+            random_idxs_s1 = torch.randperm(s1_length)
+            random_idxs_s2 = s1_length + torch.randperm(s2_length)
+
+            source_meta_idxs_s1 = [j for j in range(k1 - 1) for _ in range(k1 - j - 1)]
+            source_meta_idxs_s2 = [j for j in range(k2 - 1) for _ in range(k2 - j - 1)]
+            target_meta_idxs_s1 = [i for j in range(1, k1) for i in range(j, k1)]
+            target_meta_idxs_s2 = [i for j in range(1, k2) for i in range(j, k2)]
+
+            new_sources = torch.cat([
+                internal_states[b][random_idxs_s1[source_meta_idxs_s1]],
+                internal_states[b][random_idxs_s2[source_meta_idxs_s2]]
+            ], dim=0).unsqueeze(0)
+            new_targets = torch.cat([
+                internal_states[b][random_idxs_s1[target_meta_idxs_s1]],
+                internal_states[b][random_idxs_s2[target_meta_idxs_s2]]
+            ], dim=0).unsqueeze(0)
+
+        if sources == None:
+            sources = new_sources
+            targets = new_targets
+        else:
+            sources = torch.cat([sources, new_sources], dim=0)
+            targets = torch.cat([targets, new_targets], dim=0)
+    return sources, targets
 
 
 class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing module
@@ -363,14 +427,14 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
                     for p in m.parameters():
                         p.requires_grad = learn_phase
 
-    def forward(self, *inputs):
+    def forward(self, **kwargs):
         layers = self[:FLAGS.nb_encoder_layers]
         cum_layer_loss = 0
         layer_loss_list = []
         for layer_idx, module in enumerate(layers):  # TODO fix heavy mem overhead
             if FLAGS.DIR in combo_or_ablations and (layer_idx + FLAGS.top_down_distance < len(layers)) and (
                     not self.clean):
-                in_activations, padding_mask = inputs[:2]
+                in_activations, padding_mask = kwargs['inputs'], kwargs['padding_mask']
                 masked_inputs, DIRT_mask = apply_sequence_mask(in_activations)
                 prediction_sources = []
                 if FLAGS.DIR != 'only_adjacent':
@@ -400,71 +464,27 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
                 cum_layer_loss += layer_loss
                 layer_loss_list.append(layer_loss)
                 if not self.learn_phase:  # Wipe some internal states and replace them with predictions
-                    inputs = (torch.where(DIRT_mask[None, :, None], inputs[0], combined_prediction),) + inputs[1:]
+                    kwargs = {'inputs': torch.where(DIRT_mask[None, :, None], kwargs[0], combined_prediction),
+                              'padding_mask': kwargs['padding_mask']
+                              }
             if FLAGS.DIR == "uniform":
-                d_batch = inputs[0].shape[0]
-                is_not_padding = inputs[1]
-                token_type_ids = inputs[2]
-                # Only work with non-padded indices: max(amount) = smallest sequence in minibatch
-                if OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective] == "single_segment_sequences":
-                    min_normal_token_length = int(torch.min(is_not_padding.sum(dim=-1)))
-                    k = min(FLAGS.max_contrast_number, min_normal_token_length)
-
-                elif OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective] == "pairwise_segment_sequences":
-                    min_s1_tokens_length = torch.min((token_type_ids == 0).sum(dim=-1))
-                    min_s2_tokens_length = torch.min((is_not_padding & (token_type_ids == 1)).sum(dim=-1))
-                    k1 = min(FLAGS.max_contrast_number, min_s1_tokens_length)
-                    k2 = min(FLAGS.max_contrast_number, min_s2_tokens_length)
-
-                sources = None
-                targets = None
-                # Allow for indices from all over the sequences. Only disallowing padding, so also allowing [CLS], [SEP]
-                # TODO make sure I only positively match elements from the same segment if working with pairwise segments
-                for b in range(d_batch):
-                    if OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective] == "single_segment_sequences":
-                        random_idxs = torch.randperm((is_not_padding[b] == True).nonzero().shape[0])
-                        source_meta_idxs = [j for j in range(k - 1) for _ in range(k - j - 1)]
-                        target_meta_idxs = [i for j in range(1, k) for i in range(j, k)]
-                        new_sources = inputs[0][b][random_idxs[source_meta_idxs]].unsqueeze(0)
-                        new_targets = inputs[0][b][random_idxs[target_meta_idxs]].unsqueeze(0)
-                    elif OBJECTIVE_TO_DATA_FORMAT[FLAGS.objective] == "pairwise_segment_sequences":
-                        s1_length = int((token_type_ids[b] == 0).sum())
-                        s2_length = int(((is_not_padding[b] == True) & (token_type_ids[b] == 1)).sum())
-                        random_idxs_s1 = torch.randperm(s1_length)
-                        random_idxs_s2 = s1_length + torch.randperm(s2_length)
-
-                        source_meta_idxs_s1 = [j for j in range(k1 - 1) for _ in range(k1 - j - 1)]
-                        source_meta_idxs_s2 = [j for j in range(k2 - 1) for _ in range(k2 - j - 1)]
-                        target_meta_idxs_s1 = [i for j in range(1, k1) for i in range(j, k1)]
-                        target_meta_idxs_s2 = [i for j in range(1, k2) for i in range(j, k2)]
-
-                        new_sources = torch.cat([
-                            inputs[0][b][random_idxs_s1[source_meta_idxs_s1]],
-                            inputs[0][b][random_idxs_s2[source_meta_idxs_s2]]
-                        ],dim=0).unsqueeze(0)
-                        new_targets = torch.cat([
-                            inputs[0][b][random_idxs_s1[target_meta_idxs_s1]],
-                            inputs[0][b][random_idxs_s2[target_meta_idxs_s2]]
-                        ],dim=0).unsqueeze(0)
-
-                    if sources == None:
-                        sources = new_sources
-                        targets = new_targets
-                    else:
-                        sources = torch.cat([sources, new_sources], dim=0)
-                        targets = torch.cat([targets, new_targets], dim=0)
+                sources, targets = select_source_target_pairs(kwargs['inputs'], kwargs['padding_mask'],
+                                                              kwargs['token_type_ids'])
                 slow_sources = self.slow_feature_extractor(sources)
                 slow_targets = self.slow_feature_extractor(targets)
                 layer_loss = contrastive_loss(slow_sources, slow_targets)
                 cum_layer_loss += layer_loss
                 layer_loss_list.append(layer_loss)
-            if type(inputs) == tuple:
-                inputs = module(*inputs)
+            if type(kwargs) == dict:
+                kwargs = module(kwargs['inputs'], kwargs['padding_mask'],cum_layer_loss,layer_loss_list)
+            elif type(kwargs) == tuple:
+                kwargs = module(*kwargs)
             else:
-                inputs = module(inputs)
+                kwargs = module(kwargs)
         if ((not self.clean) and FLAGS.DIR in combo_or_ablations) or FLAGS.DIR == 'uniform':
-            inputs = inputs[:2] + (cum_layer_loss,) + (layer_loss_list,)
-        return inputs
+            kwargs['cum_layer_loss'] = cum_layer_loss
+            kwargs['layer_loss_list'] = layer_loss_list
+        return kwargs
 
 
 class Anticipation(nn.Module):

@@ -476,7 +476,7 @@ class MySequential(nn.Sequential):  # TODO move this to a for loop in enclosing 
                 cum_layer_loss += layer_loss
                 layer_loss_list.append(layer_loss)
             if type(kwargs) == dict:
-                kwargs = module(kwargs['inputs'], kwargs['padding_mask'],cum_layer_loss,layer_loss_list)
+                kwargs.update(module(kwargs['inputs'], kwargs['padding_mask'],cum_layer_loss,layer_loss_list))
             elif type(kwargs) == tuple:
                 kwargs = module(*kwargs)
             else:

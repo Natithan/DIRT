@@ -40,8 +40,8 @@ def load_pretrained_model_for_SG():
         ["", f"--flagfile={flagfile_path}"])  # Normally first arg is the name of the file to run, not relevant here
     run_flag_dict = FLAGS.__dict__['__flags']  # TODO refactor this: use getattribute instead of the __dict__ maybe
     model_flag_dict = model_FLAGS.__dict__['__flags']
+    updated_flags = []
     for f in MODEL_RELEVANT_FLAGS:
-        updated_flags = []
         if not (run_flag_dict[f].value == model_flag_dict[f].value):
             run_flag_dict[f].value = model_flag_dict[f].value
             updated_flags.append(f)

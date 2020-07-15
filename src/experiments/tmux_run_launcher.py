@@ -1785,7 +1785,7 @@ RUNS[current_run_name] = {'commands': [
     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
     f'  --max_GPUs=1 '
     f' --use_HFpretrained_weights'
-    f'  --flagfile=configs/base.txt'
+    f'  --flagfile=../configs/base.txt'
     f' --overrides "run_name={current_run_name}"; cd ..'
 ],
     'description': current_description,

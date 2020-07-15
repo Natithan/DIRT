@@ -346,7 +346,8 @@ class EncoderBlock(nn.Module):
                 layer_loss = 0
         else:
             layer_loss = 0
-        layer_loss_list.append(layer_loss)
+        if not (FLAGS.DIR == "uniform"): # In this case, layer loss is calculated outside of EncoderBlock
+            layer_loss_list.append(layer_loss)
         return {'inputs':out_state,
                 'padding_mask':padding_mask,
                 'cum_layer_loss' : layer_loss + cum_layer_loss,

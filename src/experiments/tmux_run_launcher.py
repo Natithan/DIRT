@@ -1776,20 +1776,41 @@ def track_run_in_sheets(run_name, commands, description, server):
 #         'description': current_description,
 #         'server': current_server}
 
-current_server = 'sauron'
-current_run_name = f"HFpre_nomypre"
-current_description = f"Test HFpre no-my-pretraining SG performance with latest setup"
+# current_server = 'sauron'
+# current_run_name = f"HFpre_nomypre"
+# current_description = f"Test HFpre no-my-pretraining SG performance with latest setup"
+# RUNS[current_run_name] = {'commands': [
+#     f"ssh {current_server}",
+#
+#     f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
+#     f'  --max_GPUs=1 '
+#     f' --use_HFpretrained_weights'
+#     f'  --flagfile=../configs/base.txt'
+#     f' --overrides "run_name={current_run_name}"; cd ..'
+# ],
+#     'description': current_description,
+#     'server': current_server}
+
+current_server = 'frodo'
+current_run_name = f"probe_noHFpre_mypre_0.5"
+current_description = f"Run that trains uniform contrastive critic on an ALBERT model that trained on a 0.5 fraction" \
+                      f" of my pretraining data."
 RUNS[current_run_name] = {'commands': [
     f"ssh {current_server}",
 
-    f'cd jiant; conda activate jiant; python my_main.py --config_file jiant/config/superglue_dirt.conf '
-    f'  --max_GPUs=1 '
-    f' --use_HFpretrained_weights'
-    f'  --flagfile=../configs/base.txt'
-    f' --overrides "run_name={current_run_name}"; cd ..'
+    f"conda activate p1;python pretrain.py --run_name={current_run_name} --description=\"{current_description}\" "
+    f" --max_GPUs=1 --learning_rate=10e-6 --num_epochs=1 --patience=6 --num_serialized_models_to_keep=1 --flagfile=configs/base.txt"
+    f" --d_batch=8 --max_seq_length=256 "
+    f" --replace_self_predictions=''"
+    f" --objective="
+    f" --selfpretrained_weights_path={Path(STORAGE_ROOT,'output','pretraining','noHFpre_MLM_SOP_0.5_data_fraction','best.th').as_posix()}"
+    f" --freeze_main_model"
+    f" --DIR=uniform"
+    f" --DIR_loss_fraction=1"
 ],
     'description': current_description,
     'server': current_server}
+
 
 server = libtmux.Server()
 session = server.find_where({"session_name": "exps"})
